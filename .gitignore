@@ -36,3 +36,8 @@ yarn-error.log*
 .vscode/
 .idea/
 *.swp
+
+# Local-only working artifacts (skill registry, internal docs).
+# These are private to the contributor's machine and must not enter the public repo.
+.atl/
+.docs/
