@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: regwatch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: regwatch
+      POSTGRES_PASSWORD: regwatch
+      POSTGRES_DB: regwatch
+    ports:
+      - '5432:5432'
+    volumes:
+      - regwatch-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U regwatch -d regwatch']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  regwatch-pg-data:

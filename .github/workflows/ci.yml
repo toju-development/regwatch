@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-flight runs on the same ref when a new push/PR-update arrives.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # GitHub Actions sets CI=true automatically — listed here for clarity.
+  # husky@9's `prepare` script auto-no-ops when CI=true, so `pnpm install`
+  # will not try to wire git hooks in CI.
+  CI: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # quality: install + prisma generate + (postgres-backed) migrate deploy
+  #          + lint + typecheck + test + build
+  # ---------------------------------------------------------------------------
+  quality:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        # Belt-and-suspenders: the root `postinstall` already runs db:generate,
+        # but call it explicitly so the step shows up green in CI logs and so a
+        # cache hit on node_modules still triggers a fresh generate.
+        run: pnpm -F @regwatch/db db:generate
+
+      - name: Prisma migrate deploy
+        # MVP-1: no migrations exist yet (placeholder schema only).
+        # `migrate deploy` is a no-op success in that case — exactly what the
+        # spec scenario "Migration round-trips" needs to assert as future-proof.
+        run: pnpm -F @regwatch/db exec prisma migrate deploy
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
+  # e2e: Playwright against apps/web (spawns its own dev server in CI)
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: e2e (playwright · chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: pw
+        # Lock the cache key to the resolved @playwright/test version so the
+        # browser cache is invalidated automatically when the lockfile bumps.
+        run: |
+          version=$(node -p "require('./apps/web/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm -F @regwatch/web exec playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        # Browsers are cached but OS-level libs (libnss3, etc.) are not — install
+        # only the deps when the browser binary cache hits.
+        run: pnpm -F @regwatch/web exec playwright install-deps chromium
+
+      - name: Prisma generate
+        # `apps/web` doesn't depend on @regwatch/db, but `pnpm build` (which
+        # Playwright triggers transitively if needed) and the dev server still
+        # rely on a generated client being present.
+        run: pnpm -F @regwatch/db db:generate
+
+      - name: Run Playwright tests
+        run: pnpm --filter @regwatch/web test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
