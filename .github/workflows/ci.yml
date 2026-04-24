@@ -19,6 +19,11 @@ env:
   # husky@9's `prepare` script auto-no-ops when CI=true, so `pnpm install`
   # will not try to wire git hooks in CI.
   CI: true
+  # Opt JavaScript-based actions (checkout@v4, setup-node@v4, pnpm/action-setup@v4,
+  # cache@v4, upload-artifact@v4) into the Node 24 runtime ahead of the Node 20
+  # deprecation (warned June 2026 / removed September 2026). Cleaner than bumping
+  # each action pin individually before the maintainers ship Node 24-native majors.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ---------------------------------------------------------------------------
