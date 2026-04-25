@@ -8,9 +8,8 @@ import { expect, test } from '@playwright/test';
  *
  * Magic Link uses the in-process `memoryEmailProvider` (apps/web). The test
  * polls `/api/test/inbox/<email>` (double-guarded test endpoint) until
- * the magic URL appears, then navigates to it. NOTE: folder is `test/`
- * (NOT `_test/`) — Next.js App Router treats `_`-prefixed folders as
- * private (non-routed), which would yield 404.
+ * the magic URL appears, then opens it via the shared `context.request`
+ * (NOT `page.goto`) — see foot-gun note below.
  *
  * Bearer flow extracts the `authjs.session-token` cookie value (which IS
  * the HS256 JWS thanks to the R-Sign override in `lib/auth.ts`) and sends
@@ -18,6 +17,23 @@ import { expect, test } from '@playwright/test';
  *
  * Pre-conditions: Postgres up at DATABASE_URL (used by both web + api).
  * Both webServers are launched by `playwright.config.ts`.
+ *
+ * --- B6.5 foot-guns (kept here so future debuggers don't re-investigate) ---
+ *
+ * 1. `page.goto(magicUrl, { waitUntil: 'commit' })` yields `net::ERR_ABORTED`
+ *    even though the callback returns a clean 302 + sets `authjs.session-token`.
+ *    Chromium aborts the navigation when the response is a same-origin redirect
+ *    issued mid-load with no body. Workaround: drive the callback through
+ *    `context.request.get(magicUrl)` — it follows the redirect server-side and
+ *    shares the cookie jar with `context`, so subsequent `page.goto('/')` sees
+ *    the session cookie. Auth flow itself is correct; this is purely the test.
+ *
+ * 2. After clicking a Server Action button that calls `signIn()` for the
+ *    Credentials provider, do NOT use `waitForURL((u) => !u.pathname.startsWith('/api/auth'))`
+ *    when the starting URL is `/login` — that predicate is true IMMEDIATELY,
+ *    so the test races past the action and grabs cookies before the response
+ *    arrives. Use a positive predicate (e.g. exact `/`) or `waitForResponse`
+ *    on the POST /login response and then `waitForLoadState('load')`.
  */
 
 const API_BASE = 'http://localhost:3001';
@@ -57,17 +73,7 @@ async function waitForMagicLink(
 }
 
 test.describe('Magic Link sign-in', () => {
-  // FIXME (B6.5 hotfix — block before MVP-3a production sign-off):
-  // Auth.js v5 + Resend memory provider returns 200 on /api/auth/callback/resend
-  // instead of the expected 302, then the browser lands back on /verify-request
-  // (as if the token were invalid). `page.goto(magicUrl, { waitUntil: 'commit' })`
-  // still yields ERR_ABORTED. Inbox + token round-trip work (memory-transport
-  // populates correctly after the globalThis fix); the failure is in the callback
-  // handler. Investigate: PrismaAdapter.useVerificationToken arg shape, the
-  // R-Sign HS256 jwt.encode override interaction with the magic-link callback,
-  // or whether `redirectTo` is being honored. See engram bugfix observation
-  // "auth-foundation MVP-3a — 2 known E2E failures (B6.5 hotfix needed)".
-  test.fixme(
+  test(
     'request → click → authenticated session cookie present',
     { tag: ['@e2e', '@auth', '@critical'] },
     async ({ page, request, context }) => {
@@ -82,15 +88,20 @@ test.describe('Magic Link sign-in', () => {
 
       const magicUrl = await waitForMagicLink(request, email);
 
-      // Visit the magic link → triggers token verification + events.createUser.
-      // `waitUntil: 'commit'` because the callback issues a 302 redirect
-      // mid-load → default 'load' wait yields ERR_ABORTED.
-      await page.goto(magicUrl, { waitUntil: 'commit' });
+      // Foot-gun #1 (see file header): drive the callback via the shared
+      // request context, NOT page.goto — Chromium aborts on the 302.
+      // `context.request` shares its cookie jar with `context.cookies()`,
+      // so the session cookie set by the 302 IS picked up by the browser
+      // context for subsequent page.goto calls.
+      const callbackRes = await context.request.get(magicUrl, { maxRedirects: 0 });
+      expect(
+        callbackRes.status(),
+        'callback must 302 to home (HTML body indicates verify-request fallback)',
+      ).toBe(302);
+      expect(callbackRes.headers()['location']).toContain('/');
 
-      // Wait for redirect away from the auth callback to home (or any non-auth page).
-      await page.waitForURL((url) => !url.pathname.startsWith('/api/auth'), {
-        timeout: 15_000,
-      });
+      // Now navigate the actual browser page — cookie is in the jar.
+      await page.goto('/');
 
       const cookies = await context.cookies();
       const session = cookies.find((c) => SESSION_COOKIE_NAMES.includes(c.name));
@@ -115,17 +126,7 @@ test.describe('protected api route', () => {
     },
   );
 
-  // FIXME (B6.5 hotfix — block before MVP-3a production sign-off):
-  // fake-google Credentials provider sign-in: form submit POSTs /login → 303
-  // → GET / completes, but NO `authjs.session-token` cookie is set, so the
-  // Bearer hand-off to apps/api can't proceed. Suspect: (a) the R-Sign HS256
-  // `jwt.encode` override in lib/auth.ts may not be invoked for Credentials
-  // sessions (Auth.js v5 sometimes routes Credentials through a different
-  // session-token codec), or (b) the `authorize()` return shape is missing
-  // a field Auth.js requires to mint a JWT. Confirm by adding a server-side
-  // log in the jwt callback to see if it fires for google-fake. See engram
-  // bugfix observation "auth-foundation MVP-3a — 2 known E2E failures".
-  test.fixme(
+  test(
     'apps/api _test/me returns 200 with valid Bearer token from web session',
     { tag: ['@e2e', '@auth', '@critical'] },
     async ({ page, request, context }) => {
@@ -134,11 +135,22 @@ test.describe('protected api route', () => {
 
       await page.goto('/login');
       await page.getByTestId('fake-google-email').fill(email);
-      await page.getByTestId('fake-google-signin').click();
 
-      await page.waitForURL((url) => !url.pathname.startsWith('/api/auth'), {
-        timeout: 15_000,
-      });
+      // Foot-gun #2 (see file header): wait for the Server Action's POST
+      // response BEFORE checking cookies. Using a "not on /api/auth" URL
+      // predicate would resolve instantly (we're on /login), racing past
+      // the action.
+      const [actionResp] = await Promise.all([
+        page.waitForResponse((r) => r.url().endsWith('/login') && r.request().method() === 'POST'),
+        page.getByTestId('fake-google-signin').click(),
+      ]);
+      // Server Action redirect responses are 303; the response itself sets
+      // the Set-Cookie header that lands `authjs.session-token` in the jar.
+      expect([200, 303]).toContain(actionResp.status());
+      // Wait for the browser to follow the redirect and finish loading the
+      // destination page so the cookie jar is fully populated.
+      await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 });
+      await page.waitForLoadState('load');
 
       const cookies = await context.cookies();
       const session = cookies.find((c) => SESSION_COOKIE_NAMES.includes(c.name));
