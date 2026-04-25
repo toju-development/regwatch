@@ -1,14 +1,8 @@
-import { createCoreEnv, fragments } from '@regwatch/config';
+import { createApiEnv } from '@regwatch/config';
 
 /**
  * apps/scanner env contract.
+ * Spec: auth-foundation § config — scanner is api-side; uses the api+core slice.
  * Spec: bootstrap-monorepo § packages/config — fail-fast on missing env.
  */
-export const env = createCoreEnv({
-  server: {
-    PORT: fragments.port,
-    DATABASE_URL: fragments.databaseUrl,
-  },
-  runtimeEnv: process.env,
-  emptyStringAsUndefined: true,
-});
+export const env = createApiEnv();
