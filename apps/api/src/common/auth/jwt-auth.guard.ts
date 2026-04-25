@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import type { AuthUser } from '@regwatch/types';
@@ -13,12 +19,17 @@ const BEARER_PREFIX = /^Bearer\s+/i;
  *
  * Spec: `sdd/auth-foundation/spec` R "Protected API Route via JwtAuthGuard".
  * Design: §1 + Q9 — `jose` HS256, no Passport.
+ *
+ * Constructor uses explicit `@Inject()` tokens because the runtime is `tsx`
+ * (esbuild) which does NOT emit `design:paramtypes` metadata. Without
+ * explicit tokens, Nest's DI cannot resolve `Reflector` / `JwtVerifier`.
+ * Carry-forward from MVP-1 tsx runtime decision.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
-    private readonly reflector: Reflector,
-    private readonly verifier: JwtVerifier,
+    @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(JwtVerifier) private readonly verifier: JwtVerifier,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
