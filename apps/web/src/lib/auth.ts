@@ -44,7 +44,13 @@ import { createPersonalOrgForUser } from '@/lib/auto-org';
  * Throws at module-load time so a misconfigured deploy never boots.
  */
 function resolveEmailProvider(): ReturnType<typeof memoryEmailProvider> {
-  if (env.EMAIL_TRANSPORT === 'memory') {
+  // Build-time bypass (foot-gun #6): when SKIP_ENV_VALIDATION=1, t3-env
+  // skips Zod parsing AND its defaults — so `env.EMAIL_TRANSPORT` is
+  // undefined here even though the schema default is 'memory'. Next.js 15
+  // evaluates this module during `next build` page-data collection, where
+  // we deliberately don't bind real secrets. Return the memory provider
+  // as a safe no-op; actual runtime always has env validated.
+  if (process.env.SKIP_ENV_VALIDATION === '1' || env.EMAIL_TRANSPORT === 'memory') {
     return memoryEmailProvider();
   }
   // env.EMAIL_TRANSPORT === 'resend'
