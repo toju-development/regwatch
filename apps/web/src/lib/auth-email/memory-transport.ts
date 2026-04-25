@@ -5,11 +5,13 @@
  * Design §6 (Q11). Operator decision #624: dev/CI uses memory ONLY for MVP-3a;
  * real Resend lands in a future deploy slice.
  *
- * Module-scoped Map<email, MagicLinkRecord[]> survives in-process across
- * sign-in attempts. Cleared on process restart (which is fine for tests and
- * local dev).
+ * The inbox lives on `globalThis` (NOT module scope) on purpose: in Next.js
+ * dev, Server Actions and Route Handlers compile into SEPARATE module graphs.
+ * A plain module-scoped Map would yield TWO inbox instances — sendVerification
+ * writes to one, /api/test/inbox reads from the other → Playwright sees empty.
+ * `globalThis` is shared across all graphs in the same Node process.
  *
- * `readInbox()` is consumed by the double-guarded `/api/_test/inbox/[email]`
+ * `readInbox()` is consumed by the double-guarded `/api/test/inbox/[email]`
  * test endpoint; production paths NEVER call it.
  */
 import type { EmailConfig } from 'next-auth/providers/email';
@@ -19,18 +21,28 @@ export interface MagicLinkRecord {
   receivedAt: Date;
 }
 
-const inbox = new Map<string, MagicLinkRecord[]>();
+const INBOX_KEY = '__regwatch_memory_inbox__';
+
+interface InboxGlobal {
+  [INBOX_KEY]?: Map<string, MagicLinkRecord[]>;
+}
+
+function getInbox(): Map<string, MagicLinkRecord[]> {
+  const g = globalThis as unknown as InboxGlobal;
+  if (!g[INBOX_KEY]) g[INBOX_KEY] = new Map<string, MagicLinkRecord[]>();
+  return g[INBOX_KEY];
+}
 
 function key(email: string): string {
   return email.toLowerCase();
 }
 
 export function readInbox(email: string): MagicLinkRecord[] {
-  return inbox.get(key(email)) ?? [];
+  return getInbox().get(key(email)) ?? [];
 }
 
 export function clearInbox(): void {
-  inbox.clear();
+  getInbox().clear();
 }
 
 /**
@@ -59,6 +71,7 @@ export function memoryEmailProvider(): EmailConfig {
       url: string;
     }): Promise<void> {
       const k = key(identifier);
+      const inbox = getInbox();
       const arr = inbox.get(k) ?? [];
       arr.push({ url, receivedAt: new Date() });
       inbox.set(k, arr);
