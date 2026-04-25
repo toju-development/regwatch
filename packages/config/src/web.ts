@@ -10,8 +10,13 @@ import { createCoreEnv } from './core.js';
  * Operator decision (#624): MEMORY transport + FAKE google in dev/CI;
  *   real Resend / Google deferred to a deploy slice.
  *   Therefore AUTH_GOOGLE_*, AUTH_RESEND_KEY, AUTH_EMAIL_FROM, AUTH_URL
- *   are OPTIONAL at schema level — runtime selects required ones based on
- *   EMAIL_TRANSPORT and AUTH_FAKE_GOOGLE flags.
+ *   are OPTIONAL at the schema level. Runtime enforcement lives in
+ *   `apps/web/src/lib/auth.ts`:
+ *     - email provider is selected from EMAIL_TRANSPORT and FAILS FAST at
+ *       module load if 'resend' is set without AUTH_RESEND_KEY +
+ *       AUTH_EMAIL_FROM (no silent fallback — Q4 lock);
+ *     - AUTH_FAKE_GOOGLE gates the dev-only fake-google credentials
+ *       provider mount.
  *
  * @param runtimeEnv override for tests; defaults to `process.env` at call time.
  */

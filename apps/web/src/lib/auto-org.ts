@@ -89,6 +89,12 @@ export async function createPersonalOrgForUser(
   // Idempotency guard — partial failures or events firing twice MUST NOT
   // create a second org. unique([userId, organizationId]) on Membership is
   // the DB-level safety net but this short-circuits before we even try.
+  // TODO(MVP-3b1): findFirst → create is NOT race-safe under concurrent
+  // sign-ups for the same user (two parallel requests can both see no
+  // membership and both create an org). Real fix is a DB-level UNIQUE
+  // constraint — see engram topic_key `regwatch/known-issues/auto-org-race`
+  // for full analysis + recommended schema change (e.g. User.personalOrgId
+  // unique, or Organization.ownerUserId unique).
   const existing = await prisma.membership.findFirst({
     where: { userId: user.id },
     select: { id: true },

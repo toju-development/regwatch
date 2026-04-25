@@ -14,6 +14,7 @@
  *      (see `auth-email/memory-transport.ts`); the UI is invariant.
  */
 import { signIn } from '@/lib/auth';
+import { env } from '@/env';
 import { Button } from '@/components/ui/button';
 
 interface LoginPageProps {
@@ -44,7 +45,7 @@ async function magicLinkSignInAction(formData: FormData): Promise<void> {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { error } = await searchParams;
-  const fakeGoogleEnabled = process.env.AUTH_FAKE_GOOGLE === '1';
+  const fakeGoogleEnabled = env.AUTH_FAKE_GOOGLE;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-8 p-8">

@@ -32,6 +32,34 @@ import { memoryEmailProvider } from '@/lib/auth-email/memory-transport';
 import { fakeGoogleProvider } from '@/lib/auth-providers/fake-google';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
 
+/**
+ * Resolve the email provider implementation from `EMAIL_TRANSPORT`.
+ *
+ * - `'memory'` → in-process magic-link inbox (dev/CI). Per operator decision
+ *   #624 this is the default through MVP-3a.
+ * - `'resend'` → real Resend transport. Deferred to MVP-3b deploy slice;
+ *   selecting it before then is a fail-fast configuration error (Q4 lock:
+ *   no silent fallbacks). Required env: AUTH_RESEND_KEY + AUTH_EMAIL_FROM.
+ *
+ * Throws at module-load time so a misconfigured deploy never boots.
+ */
+function resolveEmailProvider(): ReturnType<typeof memoryEmailProvider> {
+  if (env.EMAIL_TRANSPORT === 'memory') {
+    return memoryEmailProvider();
+  }
+  // env.EMAIL_TRANSPORT === 'resend'
+  if (!env.AUTH_RESEND_KEY || !env.AUTH_EMAIL_FROM) {
+    throw new Error(
+      'EMAIL_TRANSPORT=resend requires AUTH_RESEND_KEY and AUTH_EMAIL_FROM. ' +
+        'Set both, or use EMAIL_TRANSPORT=memory in dev/CI.',
+    );
+  }
+  throw new Error(
+    'EMAIL_TRANSPORT=resend selected but Resend provider not yet implemented ' +
+      '(deferred to MVP-3b deploy slice). Use EMAIL_TRANSPORT=memory in dev/CI.',
+  );
+}
+
 const JWT_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30d (Auth.js default)
 const ISSUER_DEFAULT = 'regwatch-web';
 const AUDIENCE_DEFAULT = 'regwatch-api';
@@ -72,7 +100,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt', maxAge: JWT_MAX_AGE_SECONDS },
   providers: [
     ...authConfig.providers,
-    memoryEmailProvider(),
+    resolveEmailProvider(),
     ...(env.AUTH_FAKE_GOOGLE ? [fakeGoogleProvider()] : []),
   ],
 

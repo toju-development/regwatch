@@ -4,8 +4,9 @@
  * Spec: `sdd/auth-foundation/spec` — capability `auth`, R "JWT Issuance Shape".
  * Design: `sdd/auth-foundation/design` §3 (JWT contract).
  *
- * Type-only — no runtime validation here. `apps/api` runtime-narrows JWT
- * payloads to `JwtClaims` via zod inside `jwt-verifier.ts`.
+ * No runtime validation logic — `apps/api` narrows JWT payloads to
+ * `JwtClaims` via zod inside `jwt-verifier.ts`. This file exports types +
+ * the `MEMBERSHIPS_CLAIM_CAP` runtime constant.
  */
 
 /**
