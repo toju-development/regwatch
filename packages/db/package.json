@@ -12,10 +12,16 @@
   "scripts": {
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:migrate:reset": "prisma migrate reset --skip-seed --force",
+    "db:migrate:fresh": "prisma migrate reset --force",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "echo \"source-as-published; nothing to build\""
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.0",
@@ -24,6 +30,7 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "prisma": "^6.2.0",
+    "tsx": "^4.19.2",
     "typescript": "5.7.2"
   }
 }

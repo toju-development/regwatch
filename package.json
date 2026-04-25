@@ -15,6 +15,9 @@
     "test:e2e": "turbo run test:e2e --filter=@regwatch/web",
     "db:generate": "pnpm -F @regwatch/db db:generate",
     "db:migrate": "pnpm -F @regwatch/db db:migrate",
+    "db:seed": "pnpm -F @regwatch/db db:seed",
+    "db:migrate:reset": "pnpm -F @regwatch/db db:migrate:reset",
+    "db:migrate:fresh": "pnpm -F @regwatch/db db:migrate:fresh",
     "format": "prettier --write .",
     "prepare": "husky",
     "postinstall": "pnpm db:generate"
