@@ -52,6 +52,14 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Auth env (B6 tests) — vitest.setup.ts also sets defaults, but exporting
+      # them at the job level keeps NODE_ENV-conditional code paths predictable
+      # and lets future integration tests rely on them without per-file setup.
+      AUTH_SECRET: ci-test-secret-must-be-at-least-32-chars-ok
+      JWT_ISSUER: regwatch-web
+      JWT_AUDIENCE: regwatch-api
+      EMAIL_TRANSPORT: memory
+      AUTH_FAKE_GOOGLE: '1'
 
     steps:
       - name: Checkout
@@ -94,6 +102,13 @@ jobs:
         run: pnpm test
 
       - name: Build
+        # Next.js 15 evaluates the module graph during `next build` page-data
+        # collection — including `/api/auth/[...nextauth]`, which imports the
+        # t3-env web slice. CI has no need (and no desire) to bind real auth
+        # secrets to the build phase, so we bypass env validation ONLY here.
+        # Tests, typecheck, e2e, and runtime continue to validate normally.
+        env:
+          SKIP_ENV_VALIDATION: '1'
         run: pnpm build
 
   # ---------------------------------------------------------------------------
@@ -104,6 +119,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: quality
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Shared between the spawned apps/web + apps/api dev servers (see
+      # apps/web/playwright.config.ts — both webServer entries inherit this env
+      # and override only what they need). HS256 JWS issuance + verification
+      # MUST agree on AUTH_SECRET / JWT_ISSUER / JWT_AUDIENCE.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      AUTH_SECRET: ci-test-secret-must-be-at-least-32-chars-ok
+      JWT_ISSUER: regwatch-web
+      JWT_AUDIENCE: regwatch-api
+      EMAIL_TRANSPORT: memory
+      AUTH_FAKE_GOOGLE: '1'
 
     steps:
       - name: Checkout
@@ -154,6 +196,11 @@ jobs:
         # Playwright triggers transitively if needed) and the dev server still
         # rely on a generated client being present.
         run: pnpm -F @regwatch/db db:generate
+
+      - name: Prisma migrate deploy
+        # Required for the spawned apps/web + apps/api dev servers — both
+        # connect to the postgres service. No-op until migrations exist.
+        run: pnpm -F @regwatch/db exec prisma migrate deploy
 
       - name: Run Playwright tests
         run: pnpm --filter @regwatch/web test:e2e

@@ -139,6 +139,71 @@ The Prisma client is generated to `packages/db/src/generated/client/` (gitignore
 
 ---
 
+## Authentication (MVP-3a — `auth-foundation`)
+
+End-to-end identity: NextAuth v5 in `apps/web` (Google OAuth + Resend Magic Link), stateless HS256 JWT verified per-request by a global `JwtAuthGuard` in `apps/api`. Trust boundary = shared `AUTH_SECRET`; no DB hit per API request.
+
+```
+apps/web ── NextAuth v5 (PrismaAdapter) ── HS256 JWS ──► apps/api JwtAuthGuard (jose)
+   │                                                          │
+   └─ events.createUser → auto-org-on-signup (1 User = ≥1 Membership invariant)
+```
+
+### Env vars
+
+Core (root `.env`, shared by every app):
+
+| Var            | Required | Notes                                 |
+| -------------- | -------- | ------------------------------------- |
+| `AUTH_SECRET`  | yes      | ≥ 32 chars. `openssl rand -base64 32` |
+| `JWT_ISSUER`   | no       | Recommended: `regwatch-web`           |
+| `JWT_AUDIENCE` | no       | Recommended: `regwatch-api`           |
+
+Web (`apps/web/.env`, composes core + web slice): `AUTH_URL`, `AUTH_GOOGLE_ID/SECRET`, `AUTH_RESEND_KEY`, `AUTH_EMAIL_FROM`, `EMAIL_TRANSPORT=memory|resend`, `AUTH_FAKE_GOOGLE=0|1`. See `apps/web/.env.example` and [`apps/web/README.md`](./apps/web/README.md).
+
+### Local dev workflow
+
+```bash
+# 1. seed env
+cp .env.example .env
+cp apps/web/.env.example apps/web/.env
+# generate a real AUTH_SECRET for local dev:
+sed -i.bak "s|AUTH_SECRET=.*|AUTH_SECRET=$(openssl rand -base64 32)|" .env && rm .env.bak
+
+# 2. apply migrations (adds Account + VerificationToken + User.emailVerified/image)
+pnpm -F @regwatch/db exec prisma migrate dev
+
+# 3. boot everything — fake-google + memory inbox are wired by default
+pnpm dev
+```
+
+`AUTH_FAKE_GOOGLE=1` mounts a Credentials provider (`google-fake`) at `/login` so you can sign in without provisioning real Google OAuth. `EMAIL_TRANSPORT=memory` swaps Resend for an in-process inbox readable at `GET /api/test/inbox/<email>` (double-guarded: 404 in production AND when transport ≠ memory).
+
+### Tests
+
+| Suite                                    | Count   | Command                          |
+| ---------------------------------------- | ------- | -------------------------------- |
+| `apps/api` vitest (jwt verifier + guard) | 14 / 14 | `pnpm -F @regwatch/api test`     |
+| `apps/web` vitest (auto-org + smoke)     | 11 / 11 | `pnpm -F @regwatch/web test`     |
+| `apps/web` Playwright e2e (auth)         | 4 / 4   | `pnpm -F @regwatch/web test:e2e` |
+
+CI (`.github/workflows/ci.yml`) provisions Postgres, runs `prisma migrate deploy`, and shares `AUTH_SECRET / JWT_ISSUER / JWT_AUDIENCE / EMAIL_TRANSPORT=memory / AUTH_FAKE_GOOGLE=1` across both quality + e2e jobs.
+
+### Locked decisions & foot-guns
+
+Full background lives in engram (`mem_search` against project `regwatch`):
+
+- `sdd/auth-foundation/design` — full design including R-Sign HS256 JWS override (Auth.js v5 default is JWE A256CBC-HS512; the API verifier needs JWS).
+- `sdd/auth-foundation/apply-progress` — per-batch commits + test counts.
+- `regwatch/footguns/next15-authjs-v5` — five Next 15 + Auth.js v5 foot-guns hit during apply (private folder prefix, Server Action ↔ Route Handler module split, two Playwright quirks, JWE-vs-JWS).
+- `architecture/nestjs-tsx-decorator-metadata` — `tsx` does not emit `design:paramtypes`; every NestJS `@Injectable` with deps inside `apps/api` MUST use explicit `@Inject(Token)`.
+
+### Out of scope (deferred to MVP-3b)
+
+`apps/web` middleware route gating · invitation acceptance flow · `RolesGuard` · `OrgScopeGuard` (`X-Org-Id` enforcement) · org switcher UI · JWT freshness on membership mutation. Hooks already in place: `jwt({ trigger: 'update' })` re-fetches memberships; `auth.config.ts` is the edge-safe slice middleware will import.
+
+---
+
 ## SDD (Spec-Driven Development)
 
 This project uses an **engram-backed SDD workflow**. Specs, designs, tasks and apply-progress for each change live in persistent memory under topic keys like:

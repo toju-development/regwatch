@@ -8,3 +8,5 @@ export type HealthStatus = {
   uptime: number;
   version: string;
 };
+
+export * from './auth.js';

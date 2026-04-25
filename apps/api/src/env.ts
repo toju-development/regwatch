@@ -1,15 +1,10 @@
-import { createCoreEnv, fragments } from '@regwatch/config';
+import { createApiEnv } from '@regwatch/config';
 
 /**
  * apps/api env contract.
- * Spec: bootstrap-monorepo § packages/config — "Missing required env aborts api boot".
- * On schema failure, t3-env throws a ZodError before HTTP listener binds.
+ * Spec: auth-foundation § config — "API loads only api+core slice".
+ * Spec: bootstrap-monorepo § packages/config — fail-fast on missing env.
+ *
+ * On schema failure, t3-env throws a ZodError before the HTTP listener binds.
  */
-export const env = createCoreEnv({
-  server: {
-    PORT: fragments.port,
-    DATABASE_URL: fragments.databaseUrl,
-  },
-  runtimeEnv: process.env,
-  emptyStringAsUndefined: true,
-});
+export const env = createApiEnv();
