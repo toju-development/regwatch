@@ -37,6 +37,11 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
+    // Build-time bypass: Next.js evaluates the module graph during
+    // `next build` page-data collection (e.g. `/api/auth/[...nextauth]`),
+    // where real env is unavailable. Runtime (server start, Vitest,
+    // Playwright, dev) does NOT set this flag → validation runs as usual.
+    skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   });
 }
 

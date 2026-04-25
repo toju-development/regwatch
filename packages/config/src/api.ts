@@ -19,6 +19,11 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
+    // Build-time bypass: aligns the api slice with core/web. The Nest
+    // build itself doesn't import env, but keeping the flag uniform avoids
+    // a foot-gun if a future SSR/ESM consumer pulls this slice in at
+    // build time. Runtime still fail-fasts.
+    skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   });
 }
 

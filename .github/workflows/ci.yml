@@ -102,6 +102,13 @@ jobs:
         run: pnpm test
 
       - name: Build
+        # Next.js 15 evaluates the module graph during `next build` page-data
+        # collection — including `/api/auth/[...nextauth]`, which imports the
+        # t3-env web slice. CI has no need (and no desire) to bind real auth
+        # secrets to the build phase, so we bypass env validation ONLY here.
+        # Tests, typecheck, e2e, and runtime continue to validate normally.
+        env:
+          SKIP_ENV_VALIDATION: '1'
         run: pnpm build
 
   # ---------------------------------------------------------------------------

@@ -21,6 +21,11 @@ export function createCoreEnv(runtimeEnv: Record<string, string | undefined> = p
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
+    // Build-time bypass: Next.js evaluates the module graph during
+    // `next build` page-data collection, where real env is unavailable.
+    // Runtime (server start, Vitest, Playwright, dev) does NOT set this
+    // flag, so fail-fast validation is preserved everywhere it matters.
+    skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   });
 }
 

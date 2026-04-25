@@ -72,6 +72,8 @@ See [`.env.example`](./.env.example). Composes the root `.env` (`AUTH_SECRET`, o
 
 Dev/CI default: `EMAIL_TRANSPORT=memory` + `AUTH_FAKE_GOOGLE=1` — no real Google or Resend credentials required.
 
+> **`SKIP_ENV_VALIDATION`** (build-time only): set by CI on the `pnpm build` step so `next build`'s page-data collection of `/api/auth/[...nextauth]` doesn't trip on absent runtime secrets. Never set in dev, tests, or runtime — fail-fast validation is preserved everywhere it matters.
+
 ---
 
 ## Tests
