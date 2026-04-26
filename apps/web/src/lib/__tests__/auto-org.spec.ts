@@ -17,6 +17,7 @@ interface CallCounts {
   txOpen: number;
   orgCreate: number;
   membershipCreate: number;
+  userUpdate: number;
 }
 
 interface StubOpts {
@@ -37,6 +38,7 @@ function makePrismaStub(opts: StubOpts = {}): {
     txOpen: 0,
     orgCreate: 0,
     membershipCreate: 0,
+    userUpdate: 0,
   };
   let lastSlug: string | undefined;
 
@@ -72,6 +74,12 @@ function makePrismaStub(opts: StubOpts = {}): {
           create: vi.fn(async () => {
             counts.membershipCreate += 1;
             return { id: 'mem-1' };
+          }),
+        },
+        user: {
+          updateMany: vi.fn(async () => {
+            counts.userUpdate += 1;
+            return { count: 1 };
           }),
         },
       };
@@ -116,6 +124,7 @@ describe('createPersonalOrgForUser', () => {
     expect(counts.txOpen).toBe(1);
     expect(counts.orgCreate).toBe(1);
     expect(counts.membershipCreate).toBe(1);
+    expect(counts.userUpdate).toBe(1);
     // Name is "Alice Example" → first token "Alice" → slug "alice".
     expect(lastSlug()).toBe('alice');
   });
@@ -143,6 +152,7 @@ describe('createPersonalOrgForUser', () => {
     expect(counts.txOpen).toBe(0);
     expect(counts.orgCreate).toBe(0);
     expect(counts.membershipCreate).toBe(0);
+    expect(counts.userUpdate).toBe(0);
   });
 
   it('retries with a hex-suffixed slug on P2002 slug collision', async () => {
