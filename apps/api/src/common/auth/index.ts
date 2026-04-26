@@ -7,3 +7,4 @@ export { JwtAuthGuard } from './jwt-auth.guard.js';
 export { JwtVerificationError, JwtVerifier } from './jwt-verifier.js';
 export { OrgScopeGuard } from './org-scope.guard.js';
 export { IS_PUBLIC_KEY, Public } from './public.decorator.js';
+export { RolesGuard } from './roles.guard.js';
