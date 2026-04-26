@@ -117,17 +117,22 @@ test.describe('Magic Link sign-in', () => {
 });
 
 test.describe('protected api route', () => {
+  // B7 carry-forward (task 7.5): `/_test/me` is now subject to OrgScopeGuard
+  // and requires an `X-Org-Id` header. The Bearer-only canary intent moved
+  // to `/_test/me/public-scope` (gated by JwtAuthGuard ONLY; OrgScope+Roles
+  // skipped via `@PublicScope()`). The 401-without-token assertion is
+  // identical regardless of which guard rejects first.
   test(
-    'apps/api _test/me returns 401 without Bearer token',
+    'apps/api _test/me/public-scope returns 401 without Bearer token',
     { tag: ['@e2e', '@auth'] },
     async ({ request }) => {
-      const res = await request.get(`${API_BASE}/_test/me`);
+      const res = await request.get(`${API_BASE}/_test/me/public-scope`);
       expect(res.status()).toBe(401);
     },
   );
 
   test(
-    'apps/api _test/me returns 200 with valid Bearer token from web session',
+    'apps/api _test/me/public-scope returns 200 with valid Bearer token from web session',
     { tag: ['@e2e', '@auth', '@critical'] },
     async ({ page, request, context }) => {
       // Use fake-google to short-circuit Magic Link round-trip in this test.
@@ -158,7 +163,9 @@ test.describe('protected api route', () => {
 
       // R-Sign: the cookie value IS a verifiable HS256 JWS — apps/api's
       // JwtVerifier uses the same AUTH_SECRET → must accept it.
-      const res = await request.get(`${API_BASE}/_test/me`, {
+      // `/_test/me/public-scope` is gated by JwtAuthGuard only (OrgScope &
+      // Roles skipped via `@PublicScope()`), so no `X-Org-Id` header needed.
+      const res = await request.get(`${API_BASE}/_test/me/public-scope`, {
         headers: { Authorization: `Bearer ${session!.value}` },
       });
       expect(res.status()).toBe(200);

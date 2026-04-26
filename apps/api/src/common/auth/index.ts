@@ -1,5 +1,10 @@
 export { AuthModule } from './auth.module.js';
 export { CurrentUser } from './current-user.decorator.js';
+export { CurrentOrg, CurrentRole } from './decorators/current-org.decorator.js';
+export { IS_PUBLIC_SCOPE_KEY, PublicScope } from './decorators/public-scope.decorator.js';
+export { ROLES_KEY, Roles } from './decorators/roles.decorator.js';
 export { JwtAuthGuard } from './jwt-auth.guard.js';
 export { JwtVerificationError, JwtVerifier } from './jwt-verifier.js';
+export { OrgScopeGuard } from './org-scope.guard.js';
 export { IS_PUBLIC_KEY, Public } from './public.decorator.js';
+export { RolesGuard } from './roles.guard.js';
