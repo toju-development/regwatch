@@ -5,4 +5,5 @@ export { IS_PUBLIC_SCOPE_KEY, PublicScope } from './decorators/public-scope.deco
 export { ROLES_KEY, Roles } from './decorators/roles.decorator.js';
 export { JwtAuthGuard } from './jwt-auth.guard.js';
 export { JwtVerificationError, JwtVerifier } from './jwt-verifier.js';
+export { OrgScopeGuard } from './org-scope.guard.js';
 export { IS_PUBLIC_KEY, Public } from './public.decorator.js';
