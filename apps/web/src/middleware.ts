@@ -12,6 +12,10 @@
  * Matcher denylist (default-secure: any new route is automatically protected):
  *   - `/api/auth/*`     — Auth.js handlers must run unguarded (sign-in flow)
  *   - `/api/health`     — liveness probe
+ *   - `/api/test/*`     — test-only endpoints (e.g. memory inbox); already
+ *                         double-guarded by NODE_ENV !== 'production' AND
+ *                         EMAIL_TRANSPORT === 'memory' at the route level.
+ *                         Required for Magic Link e2e harness.
  *   - `/_next/static/*` — build output
  *   - `/_next/image`    — image optimizer
  *   - `/favicon.ico`
@@ -38,5 +42,5 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/((?!api/auth|api/health|_next/static|_next/image|favicon.ico|login).*)'],
+  matcher: ['/((?!api/auth|api/health|api/test|_next/static|_next/image|favicon.ico|login).*)'],
 };
