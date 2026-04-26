@@ -39,6 +39,14 @@ async function main() {
     update: {},
   });
 
+  // Reverse pointer: User.personalOrgId @unique (added in MVP-3b1 as the
+  // race-safety net for the auto-org flow). Idempotent — re-running the
+  // seed re-asserts the same value, which Postgres permits on UNIQUE.
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { personalOrgId: org.id },
+  });
+
   await prisma.invitation.upsert({
     where: { token: DEV_INVITATION_TOKEN },
     create: {
