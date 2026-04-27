@@ -9,7 +9,6 @@ import {
   HttpStatus,
   Post,
   UnauthorizedException,
-  UsePipes,
   type PipeTransform,
 } from '@nestjs/common';
 import type { ZodType } from 'zod';
@@ -79,10 +78,9 @@ export class OrganizationsController {
   @PublicScope()
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UsePipes(new ZodBodyPipe(createOrgSchema))
   async create(
     @CurrentUser() user: AuthUser | undefined,
-    @Body() body: CreateOrgDto,
+    @Body(new ZodBodyPipe(createOrgSchema)) body: CreateOrgDto,
   ): Promise<{ id: string; name: string; slug: string }> {
     if (!user) {
       throw new UnauthorizedException('JWT required.');

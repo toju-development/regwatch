@@ -24,12 +24,13 @@ import NextAuth from 'next-auth';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import * as jose from 'jose';
 import { prisma, Prisma } from '@regwatch/db';
-import { MEMBERSHIPS_CLAIM_CAP, type MembershipClaim, type Role } from '@regwatch/types';
+import { type MembershipClaim } from '@regwatch/types';
 
 import { env } from '@/env';
 import { authConfig } from '@/lib/auth.config';
 import { memoryEmailProvider } from '@/lib/auth-email/memory-transport';
 import { fakeGoogleProvider } from '@/lib/auth-providers/fake-google';
+import { fetchMemberships } from '@/lib/auth-memberships';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
 
 /**
@@ -72,31 +73,6 @@ const AUDIENCE_DEFAULT = 'regwatch-api';
 
 function secretToString(secret: string | string[]): string {
   return Array.isArray(secret) ? secret[0]! : secret;
-}
-
-async function fetchMemberships(userId: string): Promise<MembershipClaim[]> {
-  const rows = await prisma.membership.findMany({
-    where: { userId },
-    take: MEMBERSHIPS_CLAIM_CAP,
-    select: {
-      organizationId: true,
-      role: true,
-      organization: { select: { slug: true } },
-    },
-  });
-  if (rows.length === MEMBERSHIPS_CLAIM_CAP) {
-    // Capped — JWT size invariant. Membership-mutating endpoints land in MVP-3b.
-    console.warn(
-      `[auth] memberships truncated at MEMBERSHIPS_CLAIM_CAP=${MEMBERSHIPS_CLAIM_CAP} for userId=${userId}`,
-    );
-  }
-  return rows.map(
-    (r: { organizationId: string; role: string; organization: { slug: string } }) => ({
-      organizationId: r.organizationId,
-      orgSlug: r.organization.slug,
-      role: r.role as Role,
-    }),
-  );
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -173,7 +149,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.sub = userId;
           (token as Record<string, unknown>).userId = userId;
           if (user?.email) token.email = user.email;
-          (token as Record<string, unknown>).memberships = await fetchMemberships(userId);
+          (token as Record<string, unknown>).memberships = await fetchMemberships(prisma, userId);
         }
       }
       return token;
