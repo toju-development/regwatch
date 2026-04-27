@@ -25,6 +25,12 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
     extends: [createCoreEnv(runtimeEnv)],
     server: {
       AUTH_URL: z.string().url().optional(),
+      // Server-side base URL for `apps/api` used by the proxy route handlers
+      // under `apps/web/src/app/api/org/*` (PROXY MODE — see engram
+      // `regwatch/decisions/org-membership-proxy-mode`). Server-only by
+      // design: the JWT attachment happens server-side, so the browser
+      // never needs to know this URL.
+      API_URL: z.string().url(),
       AUTH_GOOGLE_ID: z.string().min(1).optional(),
       AUTH_GOOGLE_SECRET: z.string().min(1).optional(),
       AUTH_RESEND_KEY: z.string().min(1).optional(),
