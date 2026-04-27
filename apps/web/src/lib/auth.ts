@@ -32,6 +32,7 @@ import { memoryEmailProvider } from '@/lib/auth-email/memory-transport';
 import { fakeGoogleProvider } from '@/lib/auth-providers/fake-google';
 import { fetchMemberships } from '@/lib/auth-memberships';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
+import { clearActiveOrgOnSignOut } from '@/lib/auth-signout';
 
 /**
  * Resolve the email provider implementation from `EMAIL_TRANSPORT`.
@@ -131,6 +132,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         name: user.name ?? null,
       });
     },
+    // R-ActiveOrgCookie scenario "Sign-out clears cookie": the active-org
+    // cookie must die in the same response as the NextAuth session cookie.
+    // Handler is extracted to `auth-signout.ts` for unit testability — see
+    // its module docstring.
+    signOut: clearActiveOrgOnSignOut,
   },
 
   callbacks: {
