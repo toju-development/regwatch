@@ -172,10 +172,12 @@ describe('<OrgSwitcher>', () => {
     await waitFor(() => expect(sessionUpdate).toHaveBeenCalled());
     await waitFor(() => expect(switchActiveOrg).toHaveBeenCalledWith('org-new'));
 
-    // New membership mirrored into the store.
-    expect(
-      useActiveOrg.getState().memberships.find((m) => m.organizationId === 'org-new'),
-    ).toBeTruthy();
+    // NOTE: the new membership is NOT mirrored into the store here.
+    // That used to happen via a manual `setMemberships([...])` workaround
+    // but B6 removed it — the propagation is now the responsibility of
+    // `<ActiveOrgProvider>`'s reactive `useSession()` sync (covered by
+    // its own tests). In this unit test useSession is mocked at the
+    // module level so there's no provider in the tree to observe.
   });
 
   it('surfaces an error when createOrgAction fails', async () => {

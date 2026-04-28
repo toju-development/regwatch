@@ -96,7 +96,7 @@ export default async function DashboardLayout({
   const { activeOrgId } = await resolveActiveOrg(memberships);
 
   return (
-    <SessionProvider>
+    <SessionProvider session={session}>
       <ActiveOrgProvider memberships={memberships} activeOrgId={activeOrgId}>
         <div className="flex min-h-screen flex-col">
           <header className="border-b" data-testid="dashboard-header">

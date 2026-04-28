@@ -77,7 +77,6 @@ export function OrgSwitcher({ className }: OrgSwitcherProps): React.ReactElement
   const activeOrgId = useActiveOrg((s) => s.activeOrgId);
   const hydrated = useActiveOrg((s) => s.hydrated);
   const setActive = useActiveOrg((s) => s.setActive);
-  const setMemberships = useActiveOrg((s) => s.setMemberships);
 
   const session = useSession();
 
@@ -145,18 +144,14 @@ export function OrgSwitcher({ className }: OrgSwitcherProps): React.ReactElement
 
     // Refresh the NextAuth JWT so the new membership claim is on the
     // session. `update()` is a hook concern → must run client-side.
-    await session.update?.();
-
-    // Mirror the new membership into the local store immediately so the
-    // dropdown shows it before the next RSC pass.
-    setMemberships([
-      ...memberships,
-      {
-        organizationId: created.org.id,
-        orgSlug: created.org.slug,
-        role: 'OWNER',
-      },
-    ]);
+    // The reactive sync inside `<ActiveOrgProvider>` will mirror the
+    // refreshed memberships into the Zustand store automatically — no
+    // manual `setMemberships([...])` workaround needed (foot-gun
+    // `regwatch/footguns/active-org-provider-needs-reactive-session-sync`).
+    // Pass `{}` explicitly — `update()` with no args is a GET-only refetch
+    // in next-auth v5 beta.31 and does NOT hit the jwt update branch
+    // (foot-gun `regwatch/footguns/nextauth-v5-update-no-args-skips-post`).
+    await session.update?.({});
 
     const switched = await switchActiveOrg(created.org.id);
     if (!switched.ok) {
@@ -170,7 +165,16 @@ export function OrgSwitcher({ className }: OrgSwitcherProps): React.ReactElement
 
   return (
     <>
-      <DropdownMenu>
+      {/* `modal={false}` — Radix DropdownMenu defaults to modal=true, which
+          sets `pointer-events: none` on <body> during close. If a Next.js
+          RSC re-render fires concurrently with the close animation (our
+          switch flow does: `switchActiveOrg` → revalidatePath → layout
+          re-render unmounts the dropdown content mid-cleanup), the
+          cleanup callback never runs and <body> stays unclickable until
+          a hard reload. The switcher is a PICKER, not a confirmation
+          dialog — non-modal is the correct semantic. Foot-gun:
+          `regwatch/footguns/radix-dropdown-modal-default-causes-body-lock-with-rsc-rerender`. */}
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
