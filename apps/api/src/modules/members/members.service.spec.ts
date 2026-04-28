@@ -44,6 +44,8 @@ function makeRepo(): MembersRepo {
     deleteMembership: vi.fn(),
     bumpUserVersion: vi.fn(),
     listByOrg: vi.fn(),
+    findFullInOrg: vi.fn(),
+    createMembership: vi.fn(),
   };
 }
 

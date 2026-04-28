@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@regwatch/db/client';
 import type { MembershipClaim, Role } from '@regwatch/types';
 import { AppModule } from '../../../app.module.js';
+import { MembersService } from '../members.service.js';
 
 /**
  * HTTP integration tests for `MembersController` — boots the full
@@ -92,6 +93,7 @@ describe.skipIf(!dbAvailable)('MembersController (HTTP integration)', () => {
   let app: INestApplication;
   let baseUrl: string;
   let prisma: PrismaClient;
+  let members: MembersService;
   const createdUserIds = new Set<string>();
   const createdOrgIds = new Set<string>();
 
@@ -108,6 +110,7 @@ describe.skipIf(!dbAvailable)('MembersController (HTTP integration)', () => {
     }
     baseUrl = `http://127.0.0.1:${address.port}`;
     prisma = new PrismaClient();
+    members = app.get(MembersService);
   });
 
   afterAll(async () => {
@@ -585,6 +588,126 @@ describe.skipIf(!dbAvailable)('MembersController (HTTP integration)', () => {
       expect(res.status).toBe(401);
       const body = (await res.json()) as { code?: string };
       expect(body.code).toBe('STALE_MEMBERSHIPS');
+    });
+  });
+
+  // -------------------------------------------------------------------- //
+  // MembersService.createOrGet — MVP-3b3b B3 chokepoint hygiene          //
+  // -------------------------------------------------------------------- //
+  //
+  // Direct service-level tests (NO HTTP layer). `createOrGet` is consumed
+  // by `InvitationsService.accept` (B4) and is not exposed via a
+  // controller endpoint — there's no HTTP surface to assert against.
+  //
+  // All reads are scoped to the seeded `(userId, organizationId)` pair
+  // — never raw `prisma.X.count()` (foot-gun #687: vitest runs spec files
+  // in parallel against the SAME `regwatch_dev` database, so global
+  // counts will see deltas from sibling specs in flight).
+
+  describe('MembersService.createOrGet — invitation accept idempotency (B3)', () => {
+    it('INSERT path — created=true, Membership row exists, mv bumped exactly once', async () => {
+      const org = await createOrg();
+      const user = await createUser();
+      const mvBefore = await readMv(user.userId);
+
+      const res = await members.createOrGet({
+        userId: user.userId,
+        organizationId: org.id,
+        role: 'ANALYST',
+      });
+
+      expect(res.created).toBe(true);
+      expect(res.membership.userId).toBe(user.userId);
+      expect(res.membership.organizationId).toBe(org.id);
+      expect(res.membership.role).toBe('ANALYST');
+
+      // Row scoped to seeded (userId, orgId) — NOT a global count (#687).
+      const row = await prisma.membership.findUnique({
+        where: {
+          userId_organizationId: { userId: user.userId, organizationId: org.id },
+        },
+      });
+      expect(row).not.toBeNull();
+      expect(row?.role).toBe('ANALYST');
+
+      expect(await readMv(user.userId)).toBe(mvBefore + 1);
+    });
+
+    it('idempotent path — existing Membership returned, created=false, mv NOT bumped, role NOT mutated', async () => {
+      const org = await createOrg();
+      const user = await createUser();
+      // Seed an existing Membership directly (the path that "already exists").
+      await addMembership(user.userId, org.id, 'OWNER');
+      const mvBefore = await readMv(user.userId);
+
+      // Call with a DIFFERENT role to assert the role is NOT mutated by
+      // the idempotent path (createOrGet is upsert-style "create-or-fetch",
+      // never "create-or-update").
+      const res = await members.createOrGet({
+        userId: user.userId,
+        organizationId: org.id,
+        role: 'VIEWER',
+      });
+
+      expect(res.created).toBe(false);
+      expect(res.membership.role).toBe('OWNER'); // existing role preserved.
+      expect(res.membership.userId).toBe(user.userId);
+      expect(res.membership.organizationId).toBe(org.id);
+
+      const row = await prisma.membership.findUniqueOrThrow({
+        where: {
+          userId_organizationId: { userId: user.userId, organizationId: org.id },
+        },
+      });
+      expect(row.role).toBe('OWNER');
+
+      // mv MUST NOT bump on the idempotent path (R-Jwt-Invalidate-Cross-User
+      // — no real state change, so caller's other tabs' JWTs stay valid).
+      expect(await readMv(user.userId)).toBe(mvBefore);
+    });
+
+    it('race simulation — two concurrent calls: one wins, both return same membership, mv bumped exactly once total', async () => {
+      const org = await createOrg();
+      const user = await createUser();
+      const mvBefore = await readMv(user.userId);
+
+      // `Promise.all` of two concurrent createOrGet calls. The SELECT in
+      // each call sees no row; both attempt INSERT; the unique index on
+      // (userId, organizationId) lets exactly one through. The loser
+      // catches `P2002`, re-SELECTs, and returns `created: false`.
+      const [a, b] = await Promise.all([
+        members.createOrGet({
+          userId: user.userId,
+          organizationId: org.id,
+          role: 'ANALYST',
+        }),
+        members.createOrGet({
+          userId: user.userId,
+          organizationId: org.id,
+          role: 'ANALYST',
+        }),
+      ]);
+
+      // Exactly one created=true, one created=false.
+      const createdFlags = [a.created, b.created].sort();
+      expect(createdFlags).toEqual([false, true]);
+
+      // Both observers see the SAME Membership row id (the winner's INSERT).
+      expect(a.membership.id).toBe(b.membership.id);
+      expect(a.membership.userId).toBe(user.userId);
+      expect(a.membership.organizationId).toBe(org.id);
+
+      // Exactly one DB row exists for this (userId, orgId) — scoped read,
+      // NOT a global count (#687).
+      const rows = await prisma.membership.findMany({
+        where: { userId: user.userId, organizationId: org.id },
+      });
+      expect(rows).toHaveLength(1);
+
+      // mv bumped exactly once (the winner's tx); the loser's tx rolled
+      // back so its bumpUserVersion never committed
+      // (R-User-Memberships-Version "Rollback rolls back the version bump").
+      expect(await readMv(user.userId)).toBe(mvBefore + 1);
     });
   });
 });
