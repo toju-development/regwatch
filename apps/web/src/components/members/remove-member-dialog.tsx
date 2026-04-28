@@ -81,8 +81,22 @@ export function RemoveMemberDialog({
     });
   }
 
+  /**
+   * Wrap the parent-controlled `onOpenChange` so we ALSO clear the
+   * inline error whenever the dialog closes (Cancel, ESC, backdrop
+   * click, success). Without this, a previous error (LAST_OWNER,
+   * OWNER_REMOVE_REQUIRES_OWNER, etc.) would re-paint on the next open
+   * even though the user dismissed it. The error already bubbled up to
+   * the row via `onError` so it isn't lost — the row decides whether to
+   * keep showing it.
+   */
+  function handleOpenChange(next: boolean): void {
+    onOpenChange(next);
+    if (!next) setErrorMsg(null);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent data-testid={`remove-member-dialog-${member.userId}`}>
         <DialogHeader>
           <DialogTitle>Remove member</DialogTitle>
@@ -105,7 +119,7 @@ export function RemoveMemberDialog({
             type="button"
             variant="ghost"
             disabled={pending}
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
           >
             Cancel
           </Button>
