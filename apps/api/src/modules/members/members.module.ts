@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { env } from '../../env.js';
 import { InMemoryFreshnessCache } from '../../common/auth/membership-freshness-cache.js';
+import { MembersController } from './members.controller.js';
 import { MembersService } from './members.service.js';
 import { PrismaMembersRepo } from './members.repo.js';
 import {
@@ -30,11 +31,15 @@ import {
  * **B3 will add**: `MembersController`, DTOs, `RolesOrSelfGuard`, and
  * extend `MembersService` with the transactional `mutate()` chokepoint.
  *
+ * **B4 (this commit)**: registers `MembersController` — the HTTP surface
+ * for `GET /org/:orgId/members`, `PATCH .../:userId`, `DELETE .../:userId`.
+ *
  * Spec: `sdd/org-members/spec` R-Jwt-Invalidate-Cross-User.
  * Design: `sdd/org-members/design` §0 #4, §3, §5.
  */
 @Global()
 @Module({
+  controllers: [MembersController],
   providers: [
     { provide: MEMBERS_REPO_TOKEN, useClass: PrismaMembersRepo },
     MembersService,

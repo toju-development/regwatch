@@ -301,7 +301,12 @@ describe.skipIf(!dbAvailable)('OrganizationsController (HTTP integration)', () =
         email: seed.email,
         memberships: membershipsClaim(seed),
       });
-      const orgsBefore = await prisma.organization.count();
+      // Scope count to orgs the seeded user is a member of so concurrent
+      // test files (e.g. `members.integration.spec.ts`) creating unrelated
+      // orgs in the same shared dev DB don't pollute the assertion.
+      const orgsBefore = await prisma.organization.count({
+        where: { memberships: { some: { userId: seed.userId } } },
+      });
       const membsBefore = await prisma.membership.count({ where: { userId: seed.userId } });
 
       const res = await fetch(`${baseUrl}/org`, {
@@ -318,7 +323,9 @@ describe.skipIf(!dbAvailable)('OrganizationsController (HTTP integration)', () =
       expect(body.slug).toMatch(/^[A-Za-z0-9_-]+$/);
       createdOrgIds.add(body.id);
 
-      const orgsAfter = await prisma.organization.count();
+      const orgsAfter = await prisma.organization.count({
+        where: { memberships: { some: { userId: seed.userId } } },
+      });
       const membsAfter = await prisma.membership.count({ where: { userId: seed.userId } });
       expect(orgsAfter - orgsBefore).toBe(1);
       expect(membsAfter - membsBefore).toBe(1);
