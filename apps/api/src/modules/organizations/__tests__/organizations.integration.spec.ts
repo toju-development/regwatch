@@ -81,18 +81,27 @@ interface SeededUser {
  *
  * Optional `iss`/`aud` are omitted when env doesn't set the matching
  * variables — `JwtVerifier` only enforces them when configured.
+ *
+ * `mv` defaults to `0` to match the `User.membershipsVersion` column
+ * default — `MembershipFreshnessGuard` (sdd/org-members B2) rejects
+ * any token whose `mv` claim disagrees with the live DB row, so every
+ * integration test that hits a guarded route MUST mint a JWT whose
+ * `mv` matches the seeded user's current version. Pass an explicit
+ * `mv` when a test deliberately exercises the stale-token path.
  */
 async function mintJwt(opts: {
   userId: string;
   email: string;
   memberships: MembershipClaim[];
   ttlSeconds?: number;
+  mv?: number;
 }): Promise<string> {
   const key = new TextEncoder().encode(AUTH_SECRET);
   return await new SignJWT({
     userId: opts.userId,
     email: opts.email,
     memberships: opts.memberships,
+    mv: opts.mv ?? 0,
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(opts.userId)

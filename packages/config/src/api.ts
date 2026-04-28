@@ -16,6 +16,7 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
     extends: [createCoreEnv(runtimeEnv)],
     server: {
       PORT: fragments.port,
+      MEMBERSHIPS_FRESHNESS_TTL_MS: fragments.membershipsFreshnessTtlMs,
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
