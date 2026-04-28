@@ -7,6 +7,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Post,
   UnauthorizedException,
   type PipeTransform,
@@ -58,7 +59,7 @@ class ZodBodyPipe<T> implements PipeTransform<unknown, T> {
  */
 @Controller('org')
 export class OrganizationsController {
-  constructor(private readonly service: OrganizationsService) {}
+  constructor(@Inject(OrganizationsService) private readonly service: OrganizationsService) {}
 
   @PublicScope()
   @Get('me')
