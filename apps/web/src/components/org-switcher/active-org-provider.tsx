@@ -71,6 +71,7 @@ import { useSession } from 'next-auth/react';
 import type { MembershipClaim } from '@regwatch/types';
 
 import { useActiveOrg } from '@/lib/active-org-store';
+import { registerSessionUpdater } from '@/lib/session-update';
 
 export interface ActiveOrgProviderProps {
   memberships: ReadonlyArray<MembershipClaim>;
@@ -115,7 +116,7 @@ export function ActiveOrgProvider({
   //    rotates the JWT memberships claim. This is the mechanism that
   //    lets ANY UI surface (dashboard, future members page, settings)
   //    observe a self-create / accept-invite without a page reload.
-  const { data: sessionData, status } = useSession();
+  const { data: sessionData, status, update } = useSession();
   const sessionMemberships =
     (sessionData?.user as { memberships?: MembershipClaim[] } | undefined)?.memberships ?? null;
   const sessionMembershipsKey =
@@ -131,6 +132,25 @@ export function ActiveOrgProvider({
     // is a stable Zustand action ref; sessionMemberships is read inside
     // and tracked via its hash key.
   }, [status, sessionMembershipsKey]);
+
+  // ── Bridge `useSession().update` into the module-level
+  //    `triggerSessionUpdate()` registry consumed by `apiFetch` (lib/
+  //    session-update.ts). Required by spec
+  //    `sdd/org-members/spec` § R-Jwt-Invalidate-Cross-User: when the
+  //    API responds 401 STALE_MEMBERSHIPS, `apiFetch` MUST re-mint the
+  //    JWT via `update({})` (foot-gun #670 — empty object MANDATORY)
+  //    before retrying. `update` is only available from the React hook
+  //    so we register here once it's stable.
+  //
+  //    `update` is intentionally the only dep: NextAuth re-creates it on
+  //    re-render, but registering the latest reference is harmless and
+  //    cheap (single ref assignment).
+  useEffect(() => {
+    registerSessionUpdater(update);
+    return () => {
+      registerSessionUpdater(null);
+    };
+  }, [update]);
 
   return <>{children}</>;
 }
