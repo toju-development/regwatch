@@ -84,9 +84,9 @@ function assertProxyPath(path: string): void {
       `apiFetch is in PROXY MODE — pass a local path (e.g. "/api/org/me"), not a fully-qualified URL. Got: ${JSON.stringify(path)}`,
     );
   }
-  if (!path.startsWith('/')) {
+  if (!path.startsWith('/api/')) {
     throw new TypeError(
-      `apiFetch path must be a local absolute path (e.g. "/api/org/me"). Got: ${JSON.stringify(path)}`,
+      `apiFetch path must start with "/api/" (PROXY MODE — e.g. "/api/org/me"). Got: ${JSON.stringify(path)}`,
     );
   }
 }

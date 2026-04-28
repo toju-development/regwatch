@@ -113,7 +113,9 @@ export class OrganizationsService {
    *
    * Slug retry: on `P2002` the loop generates a fresh slug and retries up
    * to {@link SLUG_RETRY_MAX} times. The (extremely unlikely) exhaustion
-   * path surfaces a `500` per spec scenario "5× collision exhaust → 500".
+   * path surfaces a `500` per spec scenario "Nx collision exhaust → 500"
+   * (where N === {@link SLUG_RETRY_MAX} === 3 today; spec is silent on
+   * the exact count, so the constant is the canonical source of truth).
    *
    * Non-`P2002` errors propagate unchanged (Nest maps to 500), preserving
    * the spec scenario "Transaction rollback on membership failure".

@@ -44,7 +44,12 @@ describe('apiFetch — proxy-mode path validation', () => {
 
   it('rejects non-absolute paths', async () => {
     hydrate('org-a');
-    await expect(apiFetch('api/org/me')).rejects.toThrow(/local absolute path/i);
+    await expect(apiFetch('api/org/me')).rejects.toThrow(/must start with "\/api\/"/i);
+  });
+
+  it('rejects local paths that do not start with /api/', async () => {
+    hydrate('org-a');
+    await expect(apiFetch('/foo/bar')).rejects.toThrow(/must start with "\/api\/"/i);
   });
 });
 

@@ -13,6 +13,23 @@
  *   - Centralises the "validate orgId ∈ memberships" decision in a
  *     trusted context.
  *
+ * SSRF hardening (Copilot PR #3 follow-up):
+ *   - These actions DO NOT self-HTTP back to local route handlers under
+ *     `/api/org/*`. The previous implementation built a self URL from
+ *     the inbound `Host` header, which is client-controllable in many
+ *     deploy topologies (no upstream Host pinning) and opens an SSRF
+ *     vector. It also added a needless extra hop.
+ *   - `switchActiveOrg` now writes the active-org cookie directly via
+ *     `setActiveOrgIdCookie` (the `/api/org/switch` handler is web-only
+ *     anyway — we just inline its single side effect here).
+ *   - `createOrgAction` calls the upstream `apps/api` directly using
+ *     the trusted `process.env.API_URL` and attaches `Authorization:
+ *     Bearer <jwt>` from the NextAuth session cookie. The PROXY MODE
+ *     decision (`regwatch/decisions/org-membership-proxy-mode`) is
+ *     about CLIENT → server traffic; SERVER → server is not subject to
+ *     the httpOnly-cookie constraint and skipping the self-hop is both
+ *     safer and faster.
+ *
  * The `createOrgAction` does NOT call NextAuth `update()` itself —
  * that MUST run on the client (it is a hook concern). The action
  * returns the new org so the client can `await update()` then call
@@ -21,10 +38,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { headers, cookies } from 'next/headers';
+import { cookies } from 'next/headers';
 
 import { auth } from '@/lib/auth';
-import { getActiveOrgCookieName } from '@/lib/active-org-cookie';
+import { setActiveOrgIdCookie } from '@/lib/active-org-cookie';
 
 interface CreateOrgResult {
   ok: boolean;
@@ -38,31 +55,41 @@ interface SwitchResult {
 }
 
 /**
- * Build an absolute URL for fetching our own route handlers from a
- * server action. Server actions don't have a `Request` object; we read
- * the inbound `host` header (always present in Next route contexts).
- *
- * Forwards the active session cookie so the proxy / switch handler
- * can `auth()` and read the JWT.
+ * NextAuth v5 session cookie name. Mirrors `proxy-fetch.ts` /
+ * `edge-jwt.ts` — duplicated intentionally to keep the server-action
+ * module free of the edge-runtime / `server-only` boundary constraints
+ * those files enforce.
  */
-async function buildSelfUrl(path: string): Promise<{ url: string; cookieHeader: string }> {
-  const h = await headers();
-  const host = h.get('host') ?? 'localhost:3000';
-  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
-  const url = `${proto}://${host}${path}`;
-  const c = await cookies();
-  const cookieHeader = c
-    .getAll()
-    .map((entry) => `${entry.name}=${entry.value}`)
-    .join('; ');
-  return { url, cookieHeader };
+function getSessionCookieName(): string {
+  return process.env.NODE_ENV === 'production'
+    ? '__Secure-authjs.session-token'
+    : 'authjs.session-token';
+}
+
+/**
+ * Resolve the trusted upstream `apps/api` base URL at call time. NEVER
+ * derived from request headers (no `Host`-based self URLs — see SSRF
+ * hardening note in the file header).
+ */
+function getApiBaseUrl(): string {
+  const url = process.env.API_URL;
+  if (!url) {
+    throw new Error(
+      'createOrgAction: process.env.API_URL is not set. Configure it via apps/web/.env.example.',
+    );
+  }
+  return url.replace(/\/+$/, '');
 }
 
 /**
  * Validate that the requested org is in the current session's
- * memberships, then POST to the local `/api/org/switch` handler so the
- * HttpOnly cookie is written on the response. Revalidate the RSC tree
- * so the new active org propagates.
+ * memberships, then write the HttpOnly active-org cookie directly.
+ * Revalidate the RSC tree so the new active org propagates.
+ *
+ * Inlines what `/api/org/switch` did: that handler is web-only (no
+ * upstream `apps/api` hop) and only has one side effect — set the
+ * cookie. Doing it here removes a self-HTTP round trip and the
+ * `Host`-header SSRF vector.
  */
 export async function switchActiveOrg(orgId: string): Promise<SwitchResult> {
   const session = await auth();
@@ -75,30 +102,20 @@ export async function switchActiveOrg(orgId: string): Promise<SwitchResult> {
     return { ok: false, error: 'forbidden' };
   }
 
-  const { url, cookieHeader } = await buildSelfUrl('/api/org/switch');
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Cookie: cookieHeader,
-    },
-    body: JSON.stringify({ orgId }),
-    cache: 'no-store',
-  });
-  if (res.status !== 204) {
-    return { ok: false, error: `switch failed (${res.status})` };
-  }
+  await setActiveOrgIdCookie(orgId);
 
   // Force the RSC tree to re-resolve memberships + active org.
   revalidatePath('/', 'layout');
-  // Also touch the cookie name so callers can verify in tests that the
-  // cookie convention is in effect (not strictly required at runtime).
-  void getActiveOrgCookieName();
   return { ok: true };
 }
 
 /**
- * Create a new organization via the proxy `POST /api/org`.
+ * Create a new organization by calling `apps/api POST /org` directly
+ * from the server action — bypassing the local `/api/org` proxy
+ * handler to avoid a self-HTTP hop and the `Host`-header SSRF vector.
+ *
+ * Auth: forwards the NextAuth session cookie value as a Bearer token
+ * (the cookie value IS the raw HS256 JWS — see `proxy-fetch.ts`).
  *
  * After this returns successfully, the CLIENT must:
  *   1. `await update()` — refresh the NextAuth JWT (gains new membership).
@@ -114,12 +131,16 @@ export async function createOrgAction(name: string): Promise<CreateOrgResult> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: 'unauthenticated' };
 
-  const { url, cookieHeader } = await buildSelfUrl('/api/org');
+  const cookieStore = await cookies();
+  const jwt = cookieStore.get(getSessionCookieName())?.value;
+  if (!jwt) return { ok: false, error: 'unauthenticated' };
+
+  const url = `${getApiBaseUrl()}/org`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Cookie: cookieHeader,
+      Authorization: `Bearer ${jwt}`,
     },
     body: JSON.stringify({ name: trimmed }),
     cache: 'no-store',
