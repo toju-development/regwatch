@@ -17,6 +17,7 @@ export interface InvitationListRow {
   acceptedAt: Date | null;
   revokedAt: Date | null;
   createdAt: Date;
+  invitedById: string | null;
   invitedByName: string | null;
 }
 
@@ -166,6 +167,7 @@ export class PrismaInvitationsRepo implements InvitationsRepo {
         acceptedAt: true,
         revokedAt: true,
         createdAt: true,
+        invitedById: true,
         invitedBy: { select: { name: true } },
       },
     });
@@ -178,6 +180,7 @@ export class PrismaInvitationsRepo implements InvitationsRepo {
       acceptedAt: r.acceptedAt,
       revokedAt: r.revokedAt,
       createdAt: r.createdAt,
+      invitedById: r.invitedById,
       invitedByName: r.invitedBy?.name ?? null,
     }));
   }

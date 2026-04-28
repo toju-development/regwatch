@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { generateInvitationToken } from '@regwatch/db/tokens';
+import { InvitationsController } from './invitations.controller.js';
 import { InvitationsService } from './invitations.service.js';
+import { InvitationsStartupValidator } from './invitations-startup.validator.js';
 import { PrismaInvitationsRepo } from './invitations.repo.js';
 import {
   INVITATIONS_REPO,
@@ -32,8 +34,10 @@ import {
  *     Used to build the `acceptUrl` on the `invitation.created` event;
  *     intentionally distinct from `API_URL` (proxy mode #666).
  *
- * **B5 will add**: `InvitationsController` + `AcceptController` mounting
- * the routes onto this module's DI graph.
+ * **B5 (this commit) adds**: `InvitationsController` (5 routes — issue,
+ * list, revoke, public preview, accept) and `InvitationsStartupValidator`
+ * (fail-fast `INVITATION_TTL_DAYS` / `WEB_URL` env validation in
+ * production; warn-only in dev/test).
  *
  * NOT `@Global()`: nothing outside this module currently needs to inject
  * `InvitationsService`. `EventEmitter2` (events) and `MembersService`
@@ -43,8 +47,10 @@ import {
  * constructor is explicit by symbol token.
  */
 @Module({
+  controllers: [InvitationsController],
   providers: [
     InvitationsService,
+    InvitationsStartupValidator,
     { provide: INVITATIONS_REPO, useClass: PrismaInvitationsRepo },
     {
       provide: TOKEN_GENERATOR,

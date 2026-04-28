@@ -84,6 +84,7 @@ export interface InvitationListItem {
   email: string;
   role: Role;
   expiresAt: Date;
+  invitedById: string | null;
   invitedByName: string | null;
   createdAt: Date;
 }
@@ -320,6 +321,7 @@ export class InvitationsService {
         email: r.email,
         role: r.role,
         expiresAt: r.expiresAt,
+        invitedById: r.invitedById,
         invitedByName: r.invitedByName,
         createdAt: r.createdAt,
       }));
