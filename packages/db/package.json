@@ -11,6 +11,14 @@
     "./client": {
       "types": "./src/generated/client/index.d.ts",
       "default": "./src/generated/client/index.js"
+    },
+    "./invitations": {
+      "types": "./src/invitations.ts",
+      "default": "./src/invitations.ts"
+    },
+    "./tokens": {
+      "types": "./src/tokens.ts",
+      "default": "./src/tokens.ts"
     }
   },
   "scripts": {

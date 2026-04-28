@@ -6,6 +6,7 @@ import { HealthModule } from './health/health.module.js';
 import { MembersModule } from './modules/members/members.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { EmailModule } from './modules/email/email.module.js';
+import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { TestOnlyModule } from './common/auth/__test-only__/test-only.module.js';
 import { env } from './env.js';
 
@@ -31,6 +32,7 @@ function conditionalImports(): NonNullable<DynamicModule['imports']> {
     MembersModule,
     OrganizationsModule,
     EmailModule.forRoot(),
+    InvitationsModule,
   ];
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
     base.push(TestOnlyModule);
