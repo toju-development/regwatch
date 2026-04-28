@@ -63,6 +63,19 @@ export interface JwtClaims {
   email: string;
   /** Capped at {@link MEMBERSHIPS_CLAIM_CAP}. */
   memberships: MembershipClaim[];
+  /**
+   * Memberships-version claim — `User.membershipsVersion` at JWT mint time.
+   *
+   * Spec: `sdd/org-members/spec` R-Jwt-Invalidate-Cross-User. Every Membership
+   * write bumps `User.membershipsVersion` for the affected user inside the
+   * same `$transaction`; `MembershipFreshnessGuard` (B2) compares this claim
+   * against the live row and 401s `STALE_MEMBERSHIPS` on mismatch.
+   *
+   * Optional at the type level for transition resilience: pre-3b3a JWTs
+   * still in flight do not carry `mv`. The freshness guard treats absent
+   * `mv` as STALE → forces NextAuth `update({})` re-mint.
+   */
+  mv?: number;
   /** Issued-at (epoch seconds). RFC 7519 standard claim. */
   iat: number;
   /** Expiration (epoch seconds). RFC 7519 standard claim. */
@@ -82,4 +95,9 @@ export interface AuthUser {
   userId: string;
   email: string;
   memberships: MembershipClaim[];
+  /**
+   * Echo of the JWT `mv` claim (see {@link JwtClaims.mv}). Optional for the
+   * same transition reason. Consumed by `MembershipFreshnessGuard`.
+   */
+  mv?: number;
 }

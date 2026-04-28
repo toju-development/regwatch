@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { PrismaClient } from '@regwatch/db';
-import { fetchMemberships } from '../auth-memberships.js';
+import { fetchMemberships, fetchMembershipsVersion } from '../auth-memberships.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:root@localhost:5432/regwatch_dev?schema=public';
 
@@ -147,5 +147,51 @@ describe.skipIf(!dbAvailable)('fetchMemberships (real Postgres)', () => {
 
     const claims = await fetchMemberships(prisma, userId);
     expect(claims).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------------
+  // sdd/org-members B1 — R-Jwt-Invalidate-Cross-User (mv claim source)
+  // ---------------------------------------------------------------------
+
+  it('fetchMembershipsVersion — fresh user has mv === 0 (default)', async () => {
+    const tag = randomBytes(6).toString('hex');
+    const userId = `mv-fresh-${tag}`;
+    await prisma.user.create({ data: { id: userId, email: `${userId}@test.local` } });
+    createdUserIds.add(userId);
+
+    const mv = await fetchMembershipsVersion(prisma, userId);
+    expect(mv).toBe(0);
+  });
+
+  it('fetchMembershipsVersion — reflects manual increments (chokepoint simulation)', async () => {
+    const tag = randomBytes(6).toString('hex');
+    const userId = `mv-bump-${tag}`;
+    await prisma.user.create({ data: { id: userId, email: `${userId}@test.local` } });
+    createdUserIds.add(userId);
+
+    expect(await fetchMembershipsVersion(prisma, userId)).toBe(0);
+
+    // MembersService.mutate() (lands in B3) will issue this exact write
+    // inside the same `$transaction` as the Membership change. The read
+    // path tested here is what the JWT callback consumes on `update({})`.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { membershipsVersion: { increment: 1 } },
+    });
+    expect(await fetchMembershipsVersion(prisma, userId)).toBe(1);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { membershipsVersion: { increment: 1 } },
+    });
+    expect(await fetchMembershipsVersion(prisma, userId)).toBe(2);
+  });
+
+  it('fetchMembershipsVersion — returns 0 for unknown userId (defensive)', async () => {
+    const mv = await fetchMembershipsVersion(
+      prisma,
+      `does-not-exist-${randomBytes(4).toString('hex')}`,
+    );
+    expect(mv).toBe(0);
   });
 });

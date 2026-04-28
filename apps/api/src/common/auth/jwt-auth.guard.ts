@@ -39,7 +39,13 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    const request = context.switchToHttp().getRequest<Request & { user?: AuthUser }>();
+    const request = context.switchToHttp().getRequest<
+      Request & {
+        user?: AuthUser;
+        jwtIat?: number;
+        jwtMv?: number;
+      }
+    >();
     const header = this.extractAuthorizationHeader(request);
     if (!header) {
       throw new UnauthorizedException('Missing Authorization header');
@@ -54,11 +60,19 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const claims = await this.verifier.verify(token);
-      request.user = {
+      const authUser: AuthUser = {
         userId: claims.userId,
         email: claims.email,
         memberships: claims.memberships,
+        ...(claims.mv !== undefined ? { mv: claims.mv } : {}),
       };
+      request.user = authUser;
+      // Surface `iat` and `mv` on the request itself so
+      // `MembershipFreshnessGuard` (B2, sdd/org-members) can key its
+      // 30s in-process cache on `(userId, jwtIat)` and compare `jwtMv`
+      // against the live `User.membershipsVersion` without re-decoding.
+      request.jwtIat = claims.iat;
+      if (claims.mv !== undefined) request.jwtMv = claims.mv;
       return true;
     } catch (err) {
       if (err instanceof JwtVerificationError) {

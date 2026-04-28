@@ -27,17 +27,21 @@ model Organization {
 }
 
 model User {
-  id            String        @id @default(cuid())
-  email         String        @unique @db.VarChar(254)
-  name          String?       @db.VarChar(120)
-  emailVerified DateTime?
-  image         String?       @db.VarChar(2048)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  personalOrgId String?       @unique
-  personalOrg   Organization? @relation("PersonalOrg", fields: [personalOrgId], references: [id], onDelete: SetNull)
-  memberships   Membership[]
-  accounts      Account[]
+  id                 String        @id @default(cuid())
+  email              String        @unique @db.VarChar(254)
+  name               String?       @db.VarChar(120)
+  emailVerified      DateTime?
+  image              String?       @db.VarChar(2048)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  personalOrgId      String?       @unique
+  personalOrg        Organization? @relation("PersonalOrg", fields: [personalOrgId], references: [id], onDelete: SetNull)
+  memberships        Membership[]
+  accounts           Account[]
+  // R-User-Memberships-Version (sdd/org-members) — bumped in same `$transaction`
+  // as every Membership write so JWTs carrying a stale `mv` claim are detected
+  // by `MembershipFreshnessGuard`. Additive default 0 — pre-existing rows get 0.
+  membershipsVersion Int           @default(0) @map("memberships_version")
 }
 
 model Account {

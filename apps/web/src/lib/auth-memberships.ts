@@ -60,3 +60,29 @@ export async function fetchMemberships(
     }),
   );
 }
+
+/**
+ * Read the user's `User.membershipsVersion` for embedding into a fresh JWT
+ * as the `mv` claim.
+ *
+ * Spec: `sdd/org-members/spec` R-Jwt-Invalidate-Cross-User + R-User-Memberships-Version.
+ *
+ * The column is bumped (atomically with every Membership write) inside
+ * `apps/api`'s `MembersService.mutate()` chokepoint. The JWT callback
+ * calls this function on initial sign-in AND on every NextAuth `update({})`
+ * trigger, so silent re-mints carry the latest version.
+ *
+ * Returns `0` if the user row is missing (defensive — `update({})` race
+ * after account deletion). The freshness guard treats `0` as a real value;
+ * it just won't match a positive live version, which is the correct outcome.
+ */
+export async function fetchMembershipsVersion(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<number> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { membershipsVersion: true },
+  });
+  return row?.membershipsVersion ?? 0;
+}
