@@ -1,6 +1,7 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import { AuthModule } from './common/auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
+import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { TestOnlyModule } from './common/auth/__test-only__/test-only.module.js';
 import { env } from './env.js';
 
@@ -18,7 +19,11 @@ import { env } from './env.js';
  * raw `process.env.NODE_ENV`.
  */
 function conditionalImports(): NonNullable<DynamicModule['imports']> {
-  const base: NonNullable<DynamicModule['imports']> = [AuthModule, HealthModule];
+  const base: NonNullable<DynamicModule['imports']> = [
+    AuthModule,
+    HealthModule,
+    OrganizationsModule,
+  ];
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
     base.push(TestOnlyModule);
   }

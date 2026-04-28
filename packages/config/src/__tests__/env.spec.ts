@@ -12,6 +12,24 @@ const baseEnv = {
   AUTH_SECRET: VALID_SECRET,
 };
 
+/**
+ * Baseline runtimeEnv for `createWebEnv` tests. Includes EVERY var the web
+ * schema marks as required so each test only has to override the var(s)
+ * under test.
+ *
+ * Why this exists (foot-gun, see engram
+ * `regwatch/footguns/t3-oss-env-core-tests-leak-process-env`):
+ * `@t3-oss/env-core` validates `runtimeEnv` against the schema; if a
+ * required key is absent it throws. Locally the dev shell may export
+ * `API_URL` etc. and the test appears to pass via process.env leakage,
+ * but CI runs with a clean env and the missing key surfaces. Tests MUST
+ * pass a complete `runtimeEnv` — never rely on the ambient shell.
+ */
+const validWebEnv = () => ({
+  ...baseEnv,
+  API_URL: 'http://localhost:4000',
+});
+
 describe('createCoreEnv', () => {
   it('parses a valid env', () => {
     const env = createCoreEnv({ ...baseEnv });
@@ -71,7 +89,7 @@ describe('createApiEnv', () => {
 
 describe('createWebEnv', () => {
   it('composes core + web vars with sensible dev defaults', () => {
-    const env = createWebEnv({ ...baseEnv });
+    const env = createWebEnv({ ...validWebEnv() });
     expect(env.AUTH_SECRET).toBe(VALID_SECRET); // inherited from core
     expect(env.EMAIL_TRANSPORT).toBe('memory'); // default per operator decision
     expect(env.AUTH_FAKE_GOOGLE).toBe(false); // default '0' coerced to boolean
@@ -80,17 +98,17 @@ describe('createWebEnv', () => {
   });
 
   it('coerces AUTH_FAKE_GOOGLE="1" to boolean true', () => {
-    const env = createWebEnv({ ...baseEnv, AUTH_FAKE_GOOGLE: '1' });
+    const env = createWebEnv({ ...validWebEnv(), AUTH_FAKE_GOOGLE: '1' });
     expect(env.AUTH_FAKE_GOOGLE).toBe(true);
   });
 
   it('rejects EMAIL_TRANSPORT outside the enum', () => {
-    expect(() => createWebEnv({ ...baseEnv, EMAIL_TRANSPORT: 'smtp' })).toThrow();
+    expect(() => createWebEnv({ ...validWebEnv(), EMAIL_TRANSPORT: 'smtp' })).toThrow();
   });
 
   it('accepts EMAIL_TRANSPORT="resend" with provider keys populated', () => {
     const env = createWebEnv({
-      ...baseEnv,
+      ...validWebEnv(),
       EMAIL_TRANSPORT: 'resend',
       AUTH_RESEND_KEY: 're_test_xxx',
       AUTH_EMAIL_FROM: 'noreply@regwatch.local',
@@ -105,6 +123,6 @@ describe('createWebEnv', () => {
   });
 
   it('rejects malformed AUTH_EMAIL_FROM', () => {
-    expect(() => createWebEnv({ ...baseEnv, AUTH_EMAIL_FROM: 'not-an-email' })).toThrow();
+    expect(() => createWebEnv({ ...validWebEnv(), AUTH_EMAIL_FROM: 'not-an-email' })).toThrow();
   });
 });

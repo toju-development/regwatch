@@ -56,6 +56,9 @@ export default defineConfig({
         EMAIL_TRANSPORT: 'memory',
         AUTH_FAKE_GOOGLE: '1',
         NEXT_PUBLIC_API_URL: `http://localhost:${API_PORT}`,
+        // Server-side base URL used by /api/org/* PROXY route handlers
+        // (PROXY MODE — see engram regwatch/decisions/org-membership-proxy-mode).
+        API_URL: `http://localhost:${API_PORT}`,
       },
     },
     {
