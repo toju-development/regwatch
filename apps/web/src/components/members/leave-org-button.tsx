@@ -89,6 +89,17 @@ export function LeaveOrgButton({
   const [pending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  /**
+   * Wrap `setOpen` so we ALSO clear the inline error whenever the dialog
+   * closes (Cancel, ESC, backdrop click). Without this, a previous error
+   * (e.g. STALE_MEMBERSHIPS) would re-paint stale on the next open.
+   * Mirrors the equivalent guard in `<RemoveMemberDialog>`.
+   */
+  function handleOpenChange(next: boolean): void {
+    setOpen(next);
+    if (!next) setErrorMsg(null);
+  }
+
   function handleConfirm(): void {
     setErrorMsg(null);
     startTransition(async () => {
@@ -132,7 +143,7 @@ export function LeaveOrgButton({
         Leave organization
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent data-testid="leave-org-dialog">
           <DialogHeader>
             <DialogTitle>Leave organization</DialogTitle>
@@ -151,7 +162,12 @@ export function LeaveOrgButton({
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="button" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button
