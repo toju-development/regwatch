@@ -141,6 +141,7 @@ export function MemberRow({
   member,
   isSelf,
   canManage,
+  viewerRole,
 }: MemberRowProps): React.ReactElement {
   const [optimisticRole, setOptimisticRole] = useState<Role | null>(null);
   const [pending, startTransition] = useTransition();
@@ -162,8 +163,31 @@ export function MemberRow({
   // change we surface the error.
   const showRolePicker = canManage || isSelf;
 
+  /**
+   * Returns true when the viewer is NOT permitted to assign `target` as
+   * a role. UI defense-in-depth — the backend (`MembersService`) is the
+   * source of truth and will reject violations with structured 403s
+   * (`OWNER_PROMOTE_REQUIRES_OWNER`, `OWNER_REMOVE_REQUIRES_OWNER`,
+   * `SELF_PROMOTE_FORBIDDEN`). We pre-disable options that we KNOW the
+   * server will reject so the user never sees a useless choice.
+   *
+   * Spec: `sdd/org-members/spec` § R-Membership-Update — "ADMIN MUST NOT
+   * promote anyone to OWNER (only OWNER can)".
+   *
+   * Today the only rule we can statically enforce here without extra
+   * hints is "ADMIN cannot pick OWNER as a target role". We intentionally
+   * do NOT pre-disable self-promote in the UI: the role hierarchy is
+   * small, the rule is non-obvious, and the server returns a clear code
+   * (`SELF_PROMOTE_FORBIDDEN`) which we surface as an inline error.
+   */
+  function isRoleOptionDisabled(target: Role): boolean {
+    if (viewerRole === 'ADMIN' && target === 'OWNER') return true;
+    return false;
+  }
+
   function handleRoleChange(next: Role): void {
     if (next === displayedRole) return;
+    if (isRoleOptionDisabled(next)) return;
     const previous = displayedRole;
     setOptimisticRole(next);
     setErrorMsg(null);
@@ -232,12 +256,14 @@ export function MemberRow({
               {ROLE_ORDER.map((r) => (
                 <DropdownMenuItem
                   key={r}
+                  disabled={isRoleOptionDisabled(r)}
                   onSelect={(event) => {
                     event.preventDefault();
                     handleRoleChange(r);
                   }}
                   data-testid={`member-row-role-option-${member.userId}-${r}`}
                   data-active={r === displayedRole ? 'true' : 'false'}
+                  data-disabled={isRoleOptionDisabled(r) ? 'true' : 'false'}
                 >
                   {r}
                 </DropdownMenuItem>

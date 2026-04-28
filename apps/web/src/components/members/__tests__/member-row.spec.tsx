@@ -20,6 +20,7 @@ vi.mock('../actions.js', () => ({
 }));
 
 import { MemberRow, type MemberRowData } from '../member-row.js';
+import type { Role } from '@regwatch/types';
 
 const baseMember: MemberRowData = {
   userId: 'user-2',
@@ -35,6 +36,7 @@ function renderRow(
     member: MemberRowData;
     isSelf: boolean;
     canManage: boolean;
+    viewerRole: Role;
   }> = {},
 ): void {
   const member = overrides.member ?? baseMember;
@@ -46,7 +48,7 @@ function renderRow(
           member={member}
           isSelf={overrides.isSelf ?? false}
           canManage={overrides.canManage ?? true}
-          viewerRole="OWNER"
+          viewerRole={overrides.viewerRole ?? 'OWNER'}
         />
       </tbody>
     </table>,
@@ -143,5 +145,49 @@ describe('<MemberRow> remove flow', () => {
 
     const err = await screen.findByTestId('remove-member-dialog-error-user-2');
     expect(err.textContent).toMatch(/last OWNER/i);
+  });
+});
+
+describe('<MemberRow> viewerRole gating (UI defense-in-depth)', () => {
+  // Spec: R-Membership-Update — "ADMIN MUST NOT promote anyone to OWNER".
+  // Backend returns 403 OWNER_PROMOTE_REQUIRES_OWNER; UI pre-disables the
+  // option so the user never picks a choice we know the server will reject.
+
+  it('ADMIN viewer sees OWNER option disabled and cannot trigger the action', async () => {
+    updateMemberRoleAction.mockResolvedValue({ ok: true });
+    renderRow({ viewerRole: 'ADMIN' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('member-row-role-trigger-user-2'));
+
+    const ownerOption = await screen.findByTestId('member-row-role-option-user-2-OWNER');
+    // Radix marks disabled items via `data-disabled` (and aria); we also
+    // mirror it ourselves for stable test access.
+    expect(ownerOption.getAttribute('data-disabled')).toBe('true');
+
+    await user.click(ownerOption);
+    // Even if Radix lets the click through (it shouldn't), the handler
+    // must be a no-op — guarded inside `handleRoleChange`.
+    expect(updateMemberRoleAction).not.toHaveBeenCalled();
+
+    // Other roles remain enabled.
+    expect(
+      screen.getByTestId('member-row-role-option-user-2-ADMIN').getAttribute('data-disabled'),
+    ).toBe('false');
+    expect(
+      screen.getByTestId('member-row-role-option-user-2-VIEWER').getAttribute('data-disabled'),
+    ).toBe('false');
+  });
+
+  it('OWNER viewer sees every role option enabled', async () => {
+    renderRow({ viewerRole: 'OWNER' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('member-row-role-trigger-user-2'));
+
+    for (const role of ['OWNER', 'ADMIN', 'ANALYST', 'VIEWER'] as const) {
+      const opt = await screen.findByTestId(`member-row-role-option-user-2-${role}`);
+      expect(opt.getAttribute('data-disabled')).toBe('false');
+    }
   });
 });
