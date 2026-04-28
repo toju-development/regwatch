@@ -74,6 +74,18 @@ export default defineConfig({
         ...SHARED_AUTH,
         NODE_ENV: 'development',
         PORT: String(API_PORT),
+        // Disable the membership-freshness cache for E2E. The cache keys
+        // on `(userId, jwtIat)` and amortizes the live-mv DB read for
+        // 30s by default — fine in production where cross-user
+        // invalidation is eventually consistent, but it makes the
+        // R-Jwt-Invalidate-Cross-User silent-retry path
+        // (`apps/web/e2e/members.spec.ts`) non-deterministic: Tab A's
+        // PATCH bumps Tab B's `User.membershipsVersion`, but Tab B's
+        // cache entry still serves the pre-bump value so no STALE
+        // 401 fires on Tab B's next /api/org/me. TTL=0 means every
+        // request hits the DB fresh.
+        // Foot-gun: `regwatch/footguns/freshness-cache-blocks-cross-user-stale-in-e2e`.
+        MEMBERSHIPS_FRESHNESS_TTL_MS: '0',
       },
     },
   ],
