@@ -131,8 +131,21 @@ export async function proxyToApi(
 
   const upstream = await fetch(url, init);
 
+  // Per the Fetch spec, statuses 204 / 205 / 304 MUST NOT have a body.
+  // The `Response` (and `NextResponse`) constructor enforces this and
+  // throws TypeError when given a non-null body for those codes — even
+  // an empty string. We discovered this when piping `DELETE /org/:orgId/
+  // members/:userId` (204) responses for slice MVP-3b3a `org-members`
+  // B5; the prior `/api/org/me` proxy never tripped it because that
+  // endpoint always returns 200.
+  //
+  // Pipe `null` for null-body statuses; otherwise read the upstream text
+  // and pass it through. We deliberately consume `upstream.text()` (and
+  // discard) for null-body responses too — this guarantees the
+  // connection drains for all branches.
+  const isNullBody = upstream.status === 204 || upstream.status === 205 || upstream.status === 304;
   const text = await upstream.text();
-  const response = new NextResponse(text, {
+  const responseInit: ResponseInit = {
     status: upstream.status,
     headers: {
       'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json',
@@ -142,6 +155,6 @@ export async function proxyToApi(
         ? { 'Cache-Control': upstream.headers.get('Cache-Control')! }
         : {}),
     },
-  });
-  return response;
+  };
+  return isNullBody ? new NextResponse(null, responseInit) : new NextResponse(text, responseInit);
 }

@@ -40,6 +40,10 @@ const jwtClaimsSchema = z.object({
   userId: z.string().min(1),
   email: z.email(),
   memberships: z.array(membershipSchema).max(MEMBERSHIPS_CLAIM_CAP),
+  // R-Jwt-Invalidate-Cross-User (sdd/org-members) — `User.membershipsVersion`
+  // at mint time. Optional here for transition compat with pre-3b3a JWTs;
+  // `MembershipFreshnessGuard` treats absent `mv` as STALE.
+  mv: z.number().int().nonnegative().optional(),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().positive(),
   iss: z.string().min(1).optional(),
@@ -90,11 +94,12 @@ export class JwtVerifier {
     }
     // Strip `undefined` optional fields so the return type satisfies
     // `exactOptionalPropertyTypes: true` against `JwtClaims`.
-    const { iss, aud, ...rest } = parsed.data;
+    const { iss, aud, mv, ...rest } = parsed.data;
     const claims: JwtClaims = {
       ...rest,
       ...(iss !== undefined ? { iss } : {}),
       ...(aud !== undefined ? { aud } : {}),
+      ...(mv !== undefined ? { mv } : {}),
     };
     return claims;
   }

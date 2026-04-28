@@ -20,6 +20,8 @@ import { JwtVerificationError, JwtVerifier } from '../jwt-verifier.js';
 interface FakeReq {
   headers: Record<string, string | string[] | undefined>;
   user?: AuthUser;
+  jwtIat?: number;
+  jwtMv?: number;
 }
 
 function makeContext(req: FakeReq): ExecutionContext {
@@ -135,5 +137,45 @@ describe('JwtAuthGuard', () => {
     const ctx = makeContext({ headers: { authorization: 'Bearer x.y.z' } });
 
     await expect(guard.canActivate(ctx)).rejects.toBe(boom);
+  });
+
+  // ---------------------------------------------------------------------
+  // sdd/org-members B1 — R-Jwt-Invalidate-Cross-User
+  // The guard MUST surface the verified `mv` and `iat` claims onto the
+  // request so `MembershipFreshnessGuard` (B2) can run its check without
+  // re-decoding the token.
+  // ---------------------------------------------------------------------
+
+  it('attaches request.jwtIat, request.jwtMv and user.mv when claims include `mv`', async () => {
+    const claims: JwtClaims = { ...VALID_CLAIMS, mv: 7, iat: 1234 };
+    const guard = new JwtAuthGuard(
+      makeReflector(false),
+      makeVerifier(async () => claims),
+    );
+    const req: FakeReq = { headers: { authorization: 'Bearer ok.token' } };
+    const ctx = makeContext(req);
+
+    await guard.canActivate(ctx);
+
+    expect(req.user?.mv).toBe(7);
+    expect(req.jwtMv).toBe(7);
+    expect(req.jwtIat).toBe(1234);
+  });
+
+  it('omits jwtMv and user.mv when claims lack `mv` (pre-3b3a token)', async () => {
+    const guard = new JwtAuthGuard(
+      makeReflector(false),
+      makeVerifier(async () => VALID_CLAIMS),
+    );
+    const req: FakeReq = { headers: { authorization: 'Bearer ok.token' } };
+    const ctx = makeContext(req);
+
+    await guard.canActivate(ctx);
+
+    // `mv` absent — `MembershipFreshnessGuard` (B2) will treat as STALE.
+    expect(req.user?.mv).toBeUndefined();
+    expect(req.jwtMv).toBeUndefined();
+    // `iat` is always present in a valid JWT.
+    expect(req.jwtIat).toBe(VALID_CLAIMS.iat);
   });
 });

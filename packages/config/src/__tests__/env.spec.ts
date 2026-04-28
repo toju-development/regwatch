@@ -85,6 +85,20 @@ describe('createApiEnv', () => {
   it('rejects short AUTH_SECRET (inherited from core)', () => {
     expect(() => createApiEnv({ ...baseEnv, AUTH_SECRET: 'nope' })).toThrow();
   });
+
+  it('defaults MEMBERSHIPS_FRESHNESS_TTL_MS to 30000 when unset (sdd/org-members B2)', () => {
+    const env = createApiEnv({ ...baseEnv });
+    expect(env.MEMBERSHIPS_FRESHNESS_TTL_MS).toBe(30000);
+  });
+
+  it('coerces MEMBERSHIPS_FRESHNESS_TTL_MS from string and accepts 0 (cache-disabled mode)', () => {
+    const env = createApiEnv({ ...baseEnv, MEMBERSHIPS_FRESHNESS_TTL_MS: '0' });
+    expect(env.MEMBERSHIPS_FRESHNESS_TTL_MS).toBe(0);
+  });
+
+  it('rejects negative MEMBERSHIPS_FRESHNESS_TTL_MS', () => {
+    expect(() => createApiEnv({ ...baseEnv, MEMBERSHIPS_FRESHNESS_TTL_MS: '-1' })).toThrow();
+  });
 });
 
 describe('createWebEnv', () => {

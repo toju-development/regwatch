@@ -30,7 +30,7 @@ import { env } from '@/env';
 import { authConfig } from '@/lib/auth.config';
 import { memoryEmailProvider } from '@/lib/auth-email/memory-transport';
 import { fakeGoogleProvider } from '@/lib/auth-providers/fake-google';
-import { fetchMemberships } from '@/lib/auth-memberships';
+import { fetchMemberships, fetchMembershipsVersion } from '@/lib/auth-memberships';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
 import { clearActiveOrgOnSignOut } from '@/lib/auth-signout';
 
@@ -156,6 +156,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           (token as Record<string, unknown>).userId = userId;
           if (user?.email) token.email = user.email;
           (token as Record<string, unknown>).memberships = await fetchMemberships(prisma, userId);
+          // R-Jwt-Invalidate-Cross-User (sdd/org-members B1) — embed the
+          // user's current `User.membershipsVersion`. Re-fetched on every
+          // `update({})` trigger so a server-side membership mutation that
+          // bumps the version is reflected on the next decoded JWT.
+          (token as Record<string, unknown>).mv = await fetchMembershipsVersion(prisma, userId);
         }
       }
       return token;

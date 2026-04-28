@@ -107,4 +107,47 @@ describe('JwtVerifier', () => {
 
     await expect(verifier.verify(token)).rejects.toBeInstanceOf(JwtVerificationError);
   });
+
+  // -------------------------------------------------------------------
+  // sdd/org-members B1 — `mv` (memberships-version) claim round-trip.
+  // -------------------------------------------------------------------
+
+  it('round-trips an `mv` claim when present', async () => {
+    const verifier = new JwtVerifier();
+    const token = await signTestToken({
+      payload: {
+        sub: 'user-mv',
+        userId: 'user-mv',
+        email: 'mv@example.com',
+        memberships: [{ organizationId: 'o', orgSlug: 'o', role: 'ADMIN' }],
+        mv: 42,
+      },
+    });
+
+    const claims = await verifier.verify(token);
+    expect(claims.mv).toBe(42);
+  });
+
+  it('omits `mv` from claims when absent (transition compat)', async () => {
+    const verifier = new JwtVerifier();
+    const token = await signTestToken();
+
+    const claims = await verifier.verify(token);
+    expect('mv' in claims).toBe(false);
+  });
+
+  it('rejects a non-numeric `mv` claim', async () => {
+    const verifier = new JwtVerifier();
+    const token = await signTestToken({
+      payload: {
+        sub: 'user-1',
+        userId: 'user-1',
+        email: 'x@y.com',
+        memberships: [],
+        mv: 'not-a-number',
+      },
+    });
+
+    await expect(verifier.verify(token)).rejects.toBeInstanceOf(JwtVerificationError);
+  });
 });

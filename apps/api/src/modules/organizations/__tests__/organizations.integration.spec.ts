@@ -81,18 +81,27 @@ interface SeededUser {
  *
  * Optional `iss`/`aud` are omitted when env doesn't set the matching
  * variables — `JwtVerifier` only enforces them when configured.
+ *
+ * `mv` defaults to `0` to match the `User.membershipsVersion` column
+ * default — `MembershipFreshnessGuard` (sdd/org-members B2) rejects
+ * any token whose `mv` claim disagrees with the live DB row, so every
+ * integration test that hits a guarded route MUST mint a JWT whose
+ * `mv` matches the seeded user's current version. Pass an explicit
+ * `mv` when a test deliberately exercises the stale-token path.
  */
 async function mintJwt(opts: {
   userId: string;
   email: string;
   memberships: MembershipClaim[];
   ttlSeconds?: number;
+  mv?: number;
 }): Promise<string> {
   const key = new TextEncoder().encode(AUTH_SECRET);
   return await new SignJWT({
     userId: opts.userId,
     email: opts.email,
     memberships: opts.memberships,
+    mv: opts.mv ?? 0,
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(opts.userId)
@@ -292,7 +301,12 @@ describe.skipIf(!dbAvailable)('OrganizationsController (HTTP integration)', () =
         email: seed.email,
         memberships: membershipsClaim(seed),
       });
-      const orgsBefore = await prisma.organization.count();
+      // Scope count to orgs the seeded user is a member of so concurrent
+      // test files (e.g. `members.integration.spec.ts`) creating unrelated
+      // orgs in the same shared dev DB don't pollute the assertion.
+      const orgsBefore = await prisma.organization.count({
+        where: { memberships: { some: { userId: seed.userId } } },
+      });
       const membsBefore = await prisma.membership.count({ where: { userId: seed.userId } });
 
       const res = await fetch(`${baseUrl}/org`, {
@@ -309,7 +323,9 @@ describe.skipIf(!dbAvailable)('OrganizationsController (HTTP integration)', () =
       expect(body.slug).toMatch(/^[A-Za-z0-9_-]+$/);
       createdOrgIds.add(body.id);
 
-      const orgsAfter = await prisma.organization.count();
+      const orgsAfter = await prisma.organization.count({
+        where: { memberships: { some: { userId: seed.userId } } },
+      });
       const membsAfter = await prisma.membership.count({ where: { userId: seed.userId } });
       expect(orgsAfter - orgsBefore).toBe(1);
       expect(membsAfter - membsBefore).toBe(1);

@@ -1,12 +1,9 @@
 /**
- * DI token for the shared `PrismaClient` singleton inside `apps/api`.
+ * Re-export of the canonical `PRISMA_CLIENT` token (now homed in
+ * `common/prisma/prisma.token.ts` under the global `PrismaModule`).
  *
- * Foot-gun #628 (tsx + NestJS DI): never rely on TypeScript-class
- * `emitDecoratorMetadata` to wire interface-typed constructor params —
- * always pair `@Inject(TOKEN)` with a `Symbol` provider token.
- *
- * The singleton is provided by `OrganizationsModule` (the only consumer
- * today). When a second module needs Prisma, lift this provider into a
- * `@Global()` `PrismaModule` and re-export the token.
+ * Kept for back-compat so existing `import` paths in this module's
+ * source + tests don't churn. New code SHOULD import from
+ * `apps/api/src/common/prisma/prisma.token.js` directly.
  */
-export const PRISMA_CLIENT = Symbol('PRISMA_CLIENT');
+export { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';

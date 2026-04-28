@@ -13,6 +13,18 @@ export const fragments = {
   authSecret: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
   publicApiUrl: z.string().url(),
   nodeEnv: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * TTL (ms) for the in-process `MembershipFreshnessGuard` cache that
+   * memoizes `User.membershipsVersion` per `(userId, jwtIat)`.
+   *
+   * Spec: `sdd/org-members/spec` R-Jwt-Invalidate-Cross-User
+   *   S "Cache amortizes per-request DB hit".
+   * Design: `sdd/org-members/design` §0 #3, §3.
+   *
+   * Coerced from string (env vars arrive as strings) and bounded to
+   * non-negative integers. Default 30000 (30s).
+   */
+  membershipsFreshnessTtlMs: z.coerce.number().int().nonnegative().default(30000),
 } as const;
 
 export { createNextEnv, z };

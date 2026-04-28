@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,38 +9,14 @@ import {
   Inject,
   Post,
   UnauthorizedException,
-  type PipeTransform,
 } from '@nestjs/common';
-import type { ZodType } from 'zod';
 import type { AuthUser } from '@regwatch/types';
 import { CurrentUser } from '../../common/auth/current-user.decorator.js';
 import { PublicScope } from '../../common/auth/decorators/public-scope.decorator.js';
+import { ZodBodyPipe } from '../../common/pipes/zod-body.pipe.js';
 import { createOrgSchema, type CreateOrgDto } from './dto/create-org.dto.js';
 import type { MeResponseDto } from './dto/me-response.dto.js';
 import { OrganizationsService } from './organizations.service.js';
-
-/**
- * Minimal Zod 4 → Nest validation pipe.
- *
- * Kept inline (not factored to `common/`) until a second module needs it —
- * YAGNI. Throws `BadRequestException` on parse failure with the flattened
- * `ZodError.issues` for client-friendly diagnostics.
- *
- * Spec: `sdd/org-membership-ux/spec` R-OrgCreate "Empty/oversize name → 400".
- */
-class ZodBodyPipe<T> implements PipeTransform<unknown, T> {
-  constructor(private readonly schema: ZodType<T>) {}
-  transform(value: unknown): T {
-    const result = this.schema.safeParse(value);
-    if (!result.success) {
-      throw new BadRequestException({
-        message: 'Validation failed',
-        issues: result.error.issues,
-      });
-    }
-    return result.data;
-  }
-}
 
 /**
  * `/org` controller — both routes are `@PublicScope()` (JWT required, no
