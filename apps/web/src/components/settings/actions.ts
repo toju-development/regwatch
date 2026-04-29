@@ -75,7 +75,11 @@ async function translateError(res: Response): Promise<UpdateSettingsResult> {
   if (await isStaleMembershipsResponse(res)) {
     return { ok: false, code: 'STALE_MEMBERSHIPS', error: 'Session is stale' };
   }
-  let body: { fieldErrors?: Record<string, string[]>; message?: string } = {};
+  let body: {
+    fieldErrors?: Record<string, string[]>;
+    issues?: unknown;
+    message?: string;
+  } = {};
   try {
     body = (await res.clone().json()) as typeof body;
   } catch {
@@ -85,11 +89,17 @@ async function translateError(res: Response): Promise<UpdateSettingsResult> {
   switch (res.status) {
     case 400:
     case 422:
+      // `apps/api`'s `ZodBodyPipe` emits `{ message, issues: ZodIssue[] }`
+      // (NOT `fieldErrors`). Map locally so the form can render inline
+      // messages. If a future api version DOES emit `fieldErrors`, that
+      // wins (backwards compat).
+      // Cross-cutting api change tracked at
+      // `regwatch/pending/zod-body-pipe-field-errors-shape`.
       return {
         ok: false,
         code: 'VALIDATION',
         error: message,
-        fieldErrors: body.fieldErrors ?? {},
+        fieldErrors: body.fieldErrors ?? issuesToFieldErrors(body.issues),
       };
     case 401:
       return { ok: false, code: 'UNAUTHENTICATED', error: message };
@@ -115,6 +125,29 @@ function zodFieldErrors(
     if (Array.isArray(v) && v.length > 0) out[k] = v;
   }
   return out;
+}
+
+/**
+ * Map an upstream `ZodIssue[]` array (from `apps/api`'s `ZodBodyPipe`)
+ * into the `{ [path]: string[] }` shape the form consumes. Defensive
+ * against malformed payloads — unknown shapes return `{}` instead of
+ * throwing.
+ *
+ * Tracking the cross-cutting api migration to a unified `fieldErrors`
+ * shape at `regwatch/pending/zod-body-pipe-field-errors-shape`.
+ */
+function issuesToFieldErrors(issues: unknown): Record<string, string[]> {
+  if (!Array.isArray(issues)) return {};
+  const map: Record<string, string[]> = {};
+  for (const issue of issues) {
+    if (typeof issue !== 'object' || issue === null) continue;
+    const path = (issue as { path?: unknown }).path;
+    const message = (issue as { message?: unknown }).message;
+    if (!Array.isArray(path) || typeof message !== 'string') continue;
+    const key = path.map((p) => String(p)).join('.') || '_root';
+    (map[key] ??= []).push(message);
+  }
+  return map;
 }
 
 /**

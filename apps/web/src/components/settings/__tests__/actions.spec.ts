@@ -131,6 +131,62 @@ describe('updateSettingsAction', () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
+  it('maps upstream Zod issues[] (jurisdictions path) into fieldErrors', async () => {
+    // `apps/api`'s `ZodBodyPipe` emits `{ message, issues }`, NOT
+    // `fieldErrors`. translateError must locally map issues so the form
+    // can render inline messages.
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, {
+        message: 'Validation failed',
+        issues: [{ path: ['jurisdictions'], message: 'EMPTY_JURISDICTIONS' }],
+      }),
+    );
+
+    const result = await updateSettingsAction('org-1', DEFAULT_SETTINGS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { jurisdictions: ['EMPTY_JURISDICTIONS'] },
+    });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('maps upstream Zod issues[] (scanDay path) into fieldErrors', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, {
+        message: 'Validation failed',
+        issues: [{ path: ['scanDay'], message: 'CUSTOM_REQUIRES_DAY_LIST' }],
+      }),
+    );
+
+    const result = await updateSettingsAction('org-1', DEFAULT_SETTINGS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { scanDay: ['CUSTOM_REQUIRES_DAY_LIST'] },
+    });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('returns empty fieldErrors when upstream 400 body has no issues nor fieldErrors', async () => {
+    // Defensive: a malformed/non-Zod 400 body must not crash; surface
+    // VALIDATION with an empty map so the form can still show the
+    // top-level message.
+    fetchMock.mockResolvedValue(jsonResponse(400, { message: 'Bad request' }));
+
+    const result = await updateSettingsAction('org-1', DEFAULT_SETTINGS);
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      error: 'Bad request',
+      fieldErrors: {},
+    });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
   it('returns UNAUTHENTICATED when no session cookie is present', async () => {
     cookieGet.mockReturnValue(undefined);
 
