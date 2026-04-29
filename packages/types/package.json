@@ -7,6 +7,18 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./jurisdictions": {
+      "types": "./src/jurisdictions.ts",
+      "default": "./src/jurisdictions.ts"
+    },
+    "./settings": {
+      "types": "./src/settings.ts",
+      "default": "./src/settings.ts"
+    },
+    "./events": {
+      "types": "./src/events.ts",
+      "default": "./src/events.ts"
     }
   },
   "scripts": {
@@ -14,6 +26,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "echo \"source-as-published; nothing to build\""
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "typescript": "5.7.2"

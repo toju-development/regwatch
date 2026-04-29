@@ -24,6 +24,7 @@ model Organization {
   memberships    Membership[]
   invitations    Invitation[]
   personalOfUser User?        @relation("PersonalOrg")
+  settings       Settings?
 }
 
 model User {
@@ -110,4 +111,28 @@ model Invitation {
   invitedBy      User?        @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId, email])
+}
+
+// Per-Organization compliance settings (jurisdictions registry selection +
+// scan cadence). 1:1 with `Organization` (lazy-created by
+// `SettingsService.getOrCreate` on first read; see
+// sdd/jurisdictions-config/design D9, D15).
+//
+// `jurisdictions` is a Postgres `jsonb` column validated app-side by
+// `SettingsJurisdictionsSchema` from `@regwatch/types/settings` (design D6).
+// `scanSchedule` and `scanDay` are TS-only enum strings — no Postgres ENUM,
+// to keep cadence additions schema-migration-free (design D3). Defaults are
+// TS-side in `DEFAULT_SETTINGS` (design §4 — registry-driven).
+model Settings {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  jurisdictions Json
+  scanSchedule  String @default("weekly")
+  scanDay       String @default("mon")
+  scanHour      Int    @default(8)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
