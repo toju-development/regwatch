@@ -60,6 +60,90 @@ import {
 import { setActiveOrgIdCookie } from '@/lib/active-org-cookie';
 
 /**
+ * Wire shape of `POST /org/:orgId/invitations` (subset we surface to UI).
+ * Mirrors `apps/api/src/modules/invitations/invitations.controller.ts`.
+ */
+export interface IssueInvitationWire {
+  id: string;
+  email: string;
+  role: Role;
+  expiresAt: string;
+  invitedById: string | null;
+  status: 'PENDING';
+}
+
+/**
+ * One row of `GET /org/:orgId/invitations` (already filtered to PENDING by
+ * the API serializer per spec R-Invitation-List). Re-declared here so the
+ * web layer doesn't take a transitive dep on `apps/api` types.
+ */
+export interface InvitationListEntryWire {
+  id: string;
+  email: string;
+  role: Role;
+  status: 'PENDING';
+  expiresAt: string;
+  invitedById: string | null;
+  invitedByName: string | null;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Standard envelope for invitation-mutation actions (issue, revoke).
+ *
+ * Distinct from {@link MembersActionResult} because the API surfaces a
+ * different code set (`PERSONAL_ORG_NOT_INVITABLE`, `INVALID_EMAIL`,
+ * `INVALID_ROLE`, `OWNER_INVITE_REQUIRES_OWNER`, `ALREADY_MEMBER`,
+ * `ALREADY_ACCEPTED`, ...). Keeping the envelopes separate avoids a
+ * union explosion and lets each UI surface narrow to the codes it can
+ * actually receive.
+ */
+export interface InvitationsActionResult {
+  ok: boolean;
+  error?: string;
+  /**
+   * Stable error code. One of:
+   *   - `STALE_MEMBERSHIPS`              — JWT mv claim is older than live;
+   *                                        client must `useSession().update({})`.
+   *   - `PERSONAL_ORG_NOT_INVITABLE`     — `:orgId` is the inviter's personal org.
+   *   - `INVALID_EMAIL`                  — body.email failed validation.
+   *   - `INVALID_ROLE`                   — body.role not in enum.
+   *   - `OWNER_INVITE_REQUIRES_OWNER`    — ADMIN cannot issue OWNER invites.
+   *   - `ALREADY_MEMBER`                 — invitee already accepted (membership exists).
+   *   - `ALREADY_ACCEPTED`               — revoking an accepted invitation.
+   *   - `UNAUTHENTICATED`                — no session cookie.
+   *   - `FORBIDDEN`                      — generic 403 (e.g. RolesGuard for VIEWER).
+   *   - `NOT_FOUND`                      — generic 404 (e.g. wrong invitationId).
+   *   - `BAD_REQUEST`                    — generic 400.
+   *   - `UNKNOWN`                        — fallback.
+   */
+  code?:
+    | 'STALE_MEMBERSHIPS'
+    | 'PERSONAL_ORG_NOT_INVITABLE'
+    | 'INVALID_EMAIL'
+    | 'INVALID_ROLE'
+    | 'OWNER_INVITE_REQUIRES_OWNER'
+    | 'ALREADY_MEMBER'
+    | 'ALREADY_ACCEPTED'
+    | 'UNAUTHENTICATED'
+    | 'FORBIDDEN'
+    | 'NOT_FOUND'
+    | 'BAD_REQUEST'
+    | 'UNKNOWN';
+}
+
+/**
+ * Result of {@link issueInvitationAction} — extends the envelope with the
+ * issued invitation payload on success so the UI can render an optimistic
+ * row in the pending list before the next RSC re-fetch lands.
+ */
+export interface IssueInvitationResult extends InvitationsActionResult {
+  invitation?: IssueInvitationWire;
+}
+
+/**
  * Standard envelope for member-mutation actions.
  *
  * `code` echoes the API's structured error code so the UI can branch
@@ -295,6 +379,119 @@ export async function leaveOrgAction(
   } catch (err) {
     if (err instanceof ApiServerUnauthenticatedError) {
       return { ok: false, code: 'UNAUTHENTICATED', error: err.message, switchedTo: null };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Translate an upstream non-2xx response into an
+ * {@link InvitationsActionResult}. Mirrors {@link translateError} but with
+ * the invitations-specific code set.
+ */
+async function translateInvitationError(res: Response): Promise<InvitationsActionResult> {
+  if (await isStaleMembershipsResponse(res)) {
+    return { ok: false, code: 'STALE_MEMBERSHIPS', error: 'Session is stale' };
+  }
+  let body: { code?: string; message?: string } = {};
+  try {
+    body = (await res.clone().json()) as { code?: string; message?: string };
+  } catch {
+    /* non-JSON body */
+  }
+  const message = body.message ?? `Request failed (${res.status})`;
+  const knownCodes: ReadonlyArray<NonNullable<InvitationsActionResult['code']>> = [
+    'PERSONAL_ORG_NOT_INVITABLE',
+    'INVALID_EMAIL',
+    'INVALID_ROLE',
+    'OWNER_INVITE_REQUIRES_OWNER',
+    'ALREADY_MEMBER',
+    'ALREADY_ACCEPTED',
+  ];
+  if (typeof body.code === 'string') {
+    const c = body.code as NonNullable<InvitationsActionResult['code']>;
+    if (knownCodes.includes(c)) {
+      return { ok: false, code: c, error: message };
+    }
+  }
+  switch (res.status) {
+    case 400:
+      return { ok: false, code: 'BAD_REQUEST', error: message };
+    case 401:
+      return { ok: false, code: 'UNAUTHENTICATED', error: message };
+    case 403:
+      return { ok: false, code: 'FORBIDDEN', error: message };
+    case 404:
+      return { ok: false, code: 'NOT_FOUND', error: message };
+    case 409:
+      // Server emits 409 for ALREADY_MEMBER (issue path); already mapped
+      // above when the body has a code. Fall through: 409 without a code
+      // is unknown.
+      return { ok: false, code: 'UNKNOWN', error: message };
+    case 410:
+      // Server emits 410 for ALREADY_ACCEPTED (revoke path); mapped above
+      // when tagged. Fall through preserves 410 semantics as UNKNOWN.
+      return { ok: false, code: 'UNKNOWN', error: message };
+    default:
+      return { ok: false, code: 'UNKNOWN', error: message };
+  }
+}
+
+/**
+ * `POST /org/:orgId/invitations` — issue a new invitation (REPLACE semantics
+ * server-side when a PENDING duplicate exists, per spec R-Invitation-Issue).
+ *
+ * On success: revalidates `/settings/members` so the RSC re-fetches the
+ * pending-invitations list. Email is sent post-commit (fire-and-forget) by
+ * the API; the action does NOT wait on it.
+ */
+export async function issueInvitationAction(
+  orgId: string,
+  email: string,
+  role: Role,
+): Promise<IssueInvitationResult> {
+  try {
+    const res = await apiServerFetch(`/org/${encodeURIComponent(orgId)}/invitations`, {
+      method: 'POST',
+      orgId,
+      body: { email, role },
+    });
+    if (!res.ok) return await translateInvitationError(res);
+    const invitation = (await res.json()) as IssueInvitationWire;
+    revalidatePath('/settings/members');
+    return { ok: true, invitation };
+  } catch (err) {
+    if (err instanceof ApiServerUnauthenticatedError) {
+      return { ok: false, code: 'UNAUTHENTICATED', error: err.message };
+    }
+    throw err;
+  }
+}
+
+/**
+ * `DELETE /org/:orgId/invitations/:invitationId` — revoke a PENDING invitation.
+ *
+ * Idempotent server-side: revoking REVOKED → 204 (no overwrite). Revoking
+ * ACCEPTED → 410 `ALREADY_ACCEPTED` (use member-remove instead).
+ */
+export async function revokeInvitationAction(
+  orgId: string,
+  invitationId: string,
+): Promise<InvitationsActionResult> {
+  try {
+    const res = await apiServerFetch(
+      `/org/${encodeURIComponent(orgId)}/invitations/${encodeURIComponent(invitationId)}`,
+      {
+        method: 'DELETE',
+        orgId,
+      },
+    );
+    if (!res.ok) return await translateInvitationError(res);
+    revalidatePath('/settings/members');
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiServerUnauthenticatedError) {
+      return { ok: false, code: 'UNAUTHENTICATED', error: err.message };
     }
     throw err;
   }
