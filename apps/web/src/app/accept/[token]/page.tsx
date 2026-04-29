@@ -26,6 +26,7 @@
  *     the unauth path).
  */
 import Link from 'next/link';
+import { SessionProvider } from 'next-auth/react';
 import type { Role } from '@regwatch/types';
 
 import { auth } from '@/lib/auth';
@@ -181,6 +182,17 @@ export default async function AcceptInvitationPage({
   }
 
   // Branch 3: preview ok + viewer signed in → show accept button.
+  // `<AcceptInvitationButton>` is a Client Component that calls
+  // `useSession()` (and `session.update({})` after a successful accept,
+  // to re-mint the JWT with the new membership claim before redirecting
+  // to `/settings/members`). The `/accept/*` route lives OUTSIDE the
+  // `(dashboard)` group, so it does NOT inherit the SessionProvider
+  // mounted in `apps/web/src/app/(dashboard)/layout.tsx`. We mount a
+  // local SessionProvider here, seeded with the RSC-side `session`,
+  // so `useSession()` resolves and `session.update()` can refresh.
+  // Without this wrap the button throws
+  // `[next-auth]: useSession must be wrapped in a <SessionProvider />`
+  // on first render — caught by `e2e/invitations.spec.ts` Test 2/3.
   return (
     <main
       className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-8"
@@ -204,7 +216,9 @@ export default async function AcceptInvitationPage({
           )}
         </p>
         <div className="mt-4">
-          <AcceptInvitationButton token={token} orgName={preview.orgName} />
+          <SessionProvider session={session}>
+            <AcceptInvitationButton token={token} orgName={preview.orgName} />
+          </SessionProvider>
         </div>
       </div>
     </main>
