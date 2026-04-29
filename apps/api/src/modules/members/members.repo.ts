@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma, type PrismaClient } from '@regwatch/db/client';
+import { Prisma, type Membership, type PrismaClient } from '@regwatch/db/client';
 import type { Role } from '@regwatch/types';
 import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { MEMBERS_REPO_TOKEN } from './tokens.js';
@@ -82,6 +82,36 @@ export interface MembersRepo {
 
   /** Delete a Membership row by id (in-tx; same atomicity rationale). */
   deleteMembership(tx: Prisma.TransactionClient, membershipId: string): Promise<void>;
+
+  /**
+   * Load the full `Membership` row for `(orgId, userId)` — `null` when
+   * the user has no membership in that org. Same scoping semantics as
+   * {@link findInOrg} but returns the full Prisma row (needed by the
+   * `createOrGet` chokepoint to surface the existing membership to the
+   * caller without re-fetching outside the tx).
+   */
+  findFullInOrg(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    userId: string,
+  ): Promise<Membership | null>;
+
+  /**
+   * Insert a new Membership row inside the chokepoint's tx. Caller is
+   * responsible for the matching `bumpUserVersion(tx, userId)` so the
+   * INSERT and the `User.membershipsVersion++` commit atomically
+   * (R-User-Memberships-Version "Membership INSERT bumps version").
+   *
+   * The unique constraint on `(userId, organizationId)` is the race gate
+   * for `MembersService.createOrGet` — `P2002` from this call is
+   * `createOrGet`'s signal to switch to the loser-of-race path
+   * (foot-gun #645 mechanism: rely on the unique index, never on a prior
+   * SELECT).
+   */
+  createMembership(
+    tx: Prisma.TransactionClient,
+    input: { userId: string; organizationId: string; role: Role },
+  ): Promise<Membership>;
 
   /**
    * Increment `User.membershipsVersion` by 1 for `userId`. The chokepoint
@@ -179,6 +209,29 @@ export class PrismaMembersRepo implements MembersRepo {
     await tx.membership.delete({
       where: { id: membershipId },
       select: { id: true },
+    });
+  }
+
+  async findFullInOrg(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    userId: string,
+  ): Promise<Membership | null> {
+    return tx.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: orgId } },
+    });
+  }
+
+  async createMembership(
+    tx: Prisma.TransactionClient,
+    input: { userId: string; organizationId: string; role: Role },
+  ): Promise<Membership> {
+    return tx.membership.create({
+      data: {
+        userId: input.userId,
+        organizationId: input.organizationId,
+        role: input.role,
+      },
     });
   }
 

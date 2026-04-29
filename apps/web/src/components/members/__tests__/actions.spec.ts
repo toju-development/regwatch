@@ -35,7 +35,13 @@ vi.mock('@/lib/active-org-cookie', () => ({
   setActiveOrgIdCookie: (...args: unknown[]) => setActiveOrgIdCookie(...args),
 }));
 
-import { updateMemberRoleAction, removeMemberAction, leaveOrgAction } from '../actions.js';
+import {
+  updateMemberRoleAction,
+  removeMemberAction,
+  leaveOrgAction,
+  issueInvitationAction,
+  revokeInvitationAction,
+} from '../actions.js';
 
 const fetchMock = vi.fn();
 
@@ -187,5 +193,110 @@ describe('leaveOrgAction', () => {
     const result = await leaveOrgAction('org-other', 'user-self', 'org-personal');
     expect(result).toMatchObject({ ok: false, code: 'STALE_MEMBERSHIPS' });
     expect(setActiveOrgIdCookie).not.toHaveBeenCalled();
+  });
+});
+
+describe('issueInvitationAction', () => {
+  it('POSTs and revalidates on success, returning the issued invitation', async () => {
+    const issued = {
+      id: 'inv-1',
+      email: 'bob@example.com',
+      role: 'ANALYST',
+      expiresAt: '2026-05-05T00:00:00.000Z',
+      invitedById: 'user-self',
+      status: 'PENDING',
+    };
+    fetchMock.mockResolvedValue(jsonResponse(201, issued));
+
+    const result = await issueInvitationAction('org-1', 'bob@example.com', 'ANALYST');
+
+    expect(result).toEqual({ ok: true, invitation: issued });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api.test/org/org-1/invitations');
+    expect((init as RequestInit).method).toBe('POST');
+    const headers = (init as RequestInit).headers as Headers;
+    expect(headers.get('X-Org-Id')).toBe('org-1');
+    expect(headers.get('Authorization')).toBe('Bearer jwt-token-value');
+    expect((init as RequestInit).body).toBe(
+      JSON.stringify({ email: 'bob@example.com', role: 'ANALYST' }),
+    );
+    expect(revalidatePath).toHaveBeenCalledWith('/settings/members');
+  });
+
+  it('translates PERSONAL_ORG_NOT_INVITABLE', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, { code: 'PERSONAL_ORG_NOT_INVITABLE', message: 'no' }),
+    );
+    const result = await issueInvitationAction('org-personal', 'b@e.com', 'VIEWER');
+    expect(result).toMatchObject({ ok: false, code: 'PERSONAL_ORG_NOT_INVITABLE' });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('translates INVALID_EMAIL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { code: 'INVALID_EMAIL', message: 'malformed' }));
+    const result = await issueInvitationAction('org-1', 'bad', 'VIEWER');
+    expect(result.code).toBe('INVALID_EMAIL');
+  });
+
+  it('translates OWNER_INVITE_REQUIRES_OWNER', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(403, { code: 'OWNER_INVITE_REQUIRES_OWNER', message: 'admin cannot' }),
+    );
+    const result = await issueInvitationAction('org-1', 'b@e.com', 'OWNER');
+    expect(result.code).toBe('OWNER_INVITE_REQUIRES_OWNER');
+  });
+
+  it('translates ALREADY_MEMBER (409)', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(409, { code: 'ALREADY_MEMBER', message: 'already a member' }),
+    );
+    const result = await issueInvitationAction('org-1', 'b@e.com', 'ANALYST');
+    expect(result.code).toBe('ALREADY_MEMBER');
+  });
+
+  it('surfaces STALE_MEMBERSHIPS as code', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, { code: 'STALE_MEMBERSHIPS' }));
+    const result = await issueInvitationAction('org-1', 'b@e.com', 'ANALYST');
+    expect(result.code).toBe('STALE_MEMBERSHIPS');
+  });
+
+  it('returns UNAUTHENTICATED when no session cookie', async () => {
+    cookieGet.mockReturnValue(undefined);
+    const result = await issueInvitationAction('org-1', 'b@e.com', 'VIEWER');
+    expect(result).toMatchObject({ ok: false, code: 'UNAUTHENTICATED' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('revokeInvitationAction', () => {
+  it('DELETEs and revalidates on success', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    const result = await revokeInvitationAction('org-1', 'inv-1');
+    expect(result).toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api.test/org/org-1/invitations/inv-1');
+    expect((init as RequestInit).method).toBe('DELETE');
+    expect(revalidatePath).toHaveBeenCalledWith('/settings/members');
+  });
+
+  it('translates ALREADY_ACCEPTED (410)', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(410, { code: 'ALREADY_ACCEPTED', message: 'already accepted' }),
+    );
+    const result = await revokeInvitationAction('org-1', 'inv-1');
+    expect(result.code).toBe('ALREADY_ACCEPTED');
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('translates FORBIDDEN (VIEWER trying to revoke)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(403, { message: 'forbidden' }));
+    const result = await revokeInvitationAction('org-1', 'inv-1');
+    expect(result.code).toBe('FORBIDDEN');
+  });
+
+  it('falls back to NOT_FOUND when API returns 404 without code', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(404, { message: 'not found' }));
+    const result = await revokeInvitationAction('org-1', 'inv-1');
+    expect(result.code).toBe('NOT_FOUND');
   });
 });

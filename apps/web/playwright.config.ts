@@ -86,6 +86,18 @@ export default defineConfig({
         // request hits the DB fresh.
         // Foot-gun: `regwatch/footguns/freshness-cache-blocks-cross-user-stale-in-e2e`.
         MEMBERSHIPS_FRESHNESS_TTL_MS: '0',
+        // Mount the dev-only `TestInboxController` (`/test/email-inbox`)
+        // and pin the in-memory transport. Spec
+        // `sdd/org-invitations/spec` § R-Email-Port-Hexagonal — Playwright
+        // (`e2e/invitations.spec.ts`) reads sent invitation emails via
+        // this endpoint to harvest the accept token. The controller is
+        // double-guarded (NODE_ENV !== production AND EMAIL_TRANSPORT ===
+        // memory); both guards are satisfied here. Production unaffected.
+        EMAIL_TRANSPORT: 'memory',
+        // Base origin embedded in every invitation `acceptUrl`. Aligns
+        // the link the test inbox returns with the Playwright `baseURL`
+        // so `page.goto(acceptUrl)` lands on the correct dev server.
+        WEB_URL: baseURL,
       },
     },
   ],

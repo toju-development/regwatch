@@ -6,7 +6,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { Prisma, type PrismaClient } from '@regwatch/db/client';
+import { Prisma, type Membership, type PrismaClient } from '@regwatch/db/client';
 import type { AuthUser, Role } from '@regwatch/types';
 import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { MEMBERS_REPO_TOKEN, type MembersRepo, type MemberRow } from './members.repo.js';
@@ -50,6 +50,41 @@ export const MEMBERS_ERROR_CODES = {
   PERSONAL_ORG_UNREMOVABLE: 'PERSONAL_ORG_UNREMOVABLE',
   MEMBERSHIP_NOT_FOUND: 'MEMBERSHIP_NOT_FOUND',
 } as const;
+
+/**
+ * Input shape for {@link MembersService.createOrGet} — the upsert-style
+ * chokepoint method used by `InvitationsService.accept` (MVP-3b3b B4).
+ *
+ * Same fields as the data passed to `tx.membership.create({ data: ... })`
+ * by the existing `MembersService` write path; carried as a named type
+ * so the controller / invitations layer can reference the contract
+ * without re-declaring the shape.
+ */
+export interface CreateOrGetMembershipInput {
+  userId: string;
+  organizationId: string;
+  role: Role;
+}
+
+/**
+ * Result of {@link MembersService.createOrGet}.
+ *
+ * `created === true` ⇔ this call performed the INSERT and bumped
+ * `User.membershipsVersion`. `created === false` ⇔ either an existing
+ * Membership was found on the initial SELECT (idempotent re-accept) OR
+ * we lost the unique-index race to a concurrent INSERT (P2002 → re-SELECT).
+ *
+ * In both `created: false` paths `User.membershipsVersion` MUST NOT be
+ * bumped — the caller's JWT (and any other live JWT) is already valid
+ * for the membership that exists. Bumping mv on the idempotent path
+ * would force a STALE_MEMBERSHIPS retry storm across all of the user's
+ * tabs for no reason (R-Jwt-Invalidate-Cross-User: bump only on real
+ * membership state change).
+ */
+export interface CreateOrGetMembershipResult {
+  membership: Membership;
+  created: boolean;
+}
 
 /**
  * Members domain service.
@@ -248,6 +283,85 @@ export class MembersService {
         await this.repo.deleteMembership(tx, target.id);
       },
     });
+  }
+
+  /**
+   * Idempotent INSERT-or-fetch chokepoint for `Membership(orgId, userId)`.
+   *
+   * Companion to {@link mutate} / {@link updateRole} / {@link remove} —
+   * preserves their atomicity invariant (every Membership write goes
+   * through `MembersService` and bumps `User.membershipsVersion` in the
+   * SAME `prisma.$transaction`) but adds the missing INSERT path needed
+   * by `InvitationsService.accept` (MVP-3b3b).
+   *
+   * Why a separate method (NOT folded into {@link mutate}):
+   *
+   *   - `mutate` is intentionally write-only: every call MUST result in
+   *     a Membership write AND a `User.membershipsVersion++`. Folding
+   *     "maybe already exists, do nothing" semantics into `mutate` would
+   *     change its contract and risk regressions on the 3b3a chokepoint
+   *     proven by the existing 18 integration tests.
+   *   - `createOrGet` returns `{ membership, created }`; only the
+   *     `created: true` branch bumps mv. Idempotent re-accept of an
+   *     invitation MUST NOT churn JWTs across the user's other tabs
+   *     (R-Jwt-Invalidate-Cross-User: bump only on real state change).
+   *
+   * Race semantics (foot-gun #645 — "the unique index is the gate, not
+   * the prior SELECT"):
+   *
+   *   1. SELECT inside `$transaction` — if the row exists, return it
+   *      with `created: false`; tx commits with no writes.
+   *   2. Otherwise INSERT + `bumpUserVersion(tx, userId)` in the same
+   *      tx; commit; return `created: true`.
+   *   3. If a concurrent caller wins the unique-index race between our
+   *      SELECT and our INSERT, we receive `P2002` and the entire tx
+   *      (any partial work) rolls back. We then re-SELECT OUTSIDE the
+   *      failed tx (Postgres aborts a tx on constraint violation —
+   *      subsequent statements on the same tx error with "current
+   *      transaction is aborted"; the re-SELECT MUST happen on a fresh
+   *      connection) and return `{ membership: winner, created: false }`.
+   *
+   * Spec: `sdd/org-invitations/spec` R-Invitation-Accept (idempotent
+   *   re-accept), `sdd/org-members/spec` R-User-Memberships-Version
+   *   (INSERT bumps; rollback rolls back; idempotent path does NOT bump).
+   * Design: `sdd/org-invitations/design` §0 #2 ("Idempotent accept WITHOUT
+   *   changing `MembersService.create()` semantics").
+   */
+  async createOrGet(input: CreateOrGetMembershipInput): Promise<CreateOrGetMembershipResult> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existing = await this.repo.findFullInOrg(tx, input.organizationId, input.userId);
+        if (existing) {
+          return { membership: existing, created: false };
+        }
+        const membership = await this.repo.createMembership(tx, {
+          userId: input.userId,
+          organizationId: input.organizationId,
+          role: input.role,
+        });
+        await this.repo.bumpUserVersion(tx, input.userId);
+        return { membership, created: true };
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // Lost the unique-index race. The whole tx (including our
+        // SELECT) was rolled back when Postgres rejected the INSERT,
+        // and the connection is no longer usable for further reads.
+        // Re-SELECT on a fresh connection: the winning tx has already
+        // committed by the time we observed the constraint violation
+        // (constraint check happens at write time on the unique index).
+        const winner = await this.prisma.membership.findUniqueOrThrow({
+          where: {
+            userId_organizationId: {
+              userId: input.userId,
+              organizationId: input.organizationId,
+            },
+          },
+        });
+        return { membership: winner, created: false };
+      }
+      throw err;
+    }
   }
 
   /**
