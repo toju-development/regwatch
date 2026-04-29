@@ -419,6 +419,25 @@ describe.skipIf(!dbAvailable)('InvitationsService (integration)', () => {
       const row = await prisma.invitation.findUniqueOrThrow({ where: { id: issued.id } });
       expect(row.email).toBe(cleanEmail.toLowerCase());
     });
+
+    it('emits acceptUrl with single `/accept/` segment regardless of WEB_URL trailing slash', async () => {
+      // Regression: previously built via template-literal concatenation
+      // — `${webUrl}/accept/${token}` — which produces `//accept/` when
+      // WEB_URL has a trailing slash. The URL constructor canonicalises
+      // the join (base origin + new path).
+      const { org, actor } = await seedOrgWithOwner();
+      const inviteeEmail = `urljoin-${tag()}@example.com`;
+      const eventP = captureNextEvent();
+      const issued = await invitations.issue(actor, org.id, {
+        email: inviteeEmail,
+        role: 'VIEWER',
+      });
+      trackInvitation(issued.id);
+      const evt = (await eventP) as { acceptUrl: string };
+      // Exactly ONE `/accept/` segment, never `//accept/`.
+      expect(evt.acceptUrl).not.toMatch(/\/\/accept\//);
+      expect(evt.acceptUrl.match(/\/accept\//g)?.length).toBe(1);
+    });
   });
 
   // ------------------------------------------------------------------ //

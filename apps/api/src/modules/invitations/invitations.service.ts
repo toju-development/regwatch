@@ -245,7 +245,7 @@ export class InvitationsService {
       orgName: org.name,
       inviterName: actorUser?.name ?? null,
       role,
-      acceptUrl: `${this.webUrl}/accept/${issued.token}`,
+      acceptUrl: new URL(`/accept/${issued.token}`, this.webUrl).toString(),
       expiresAt: issued.expiresAt,
     };
     this.events.emit(INVITATION_CREATED_EVENT, evt);
