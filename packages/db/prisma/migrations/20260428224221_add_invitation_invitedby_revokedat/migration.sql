@@ -2,9 +2,6 @@
 ALTER TABLE "Invitation" ADD COLUMN     "invitedById" TEXT,
 ADD COLUMN     "revokedAt" TIMESTAMP(3);
 
--- CreateIndex
-CREATE INDEX "Invitation_token_idx" ON "Invitation"("token");
-
 -- AddForeignKey
 ALTER TABLE "Invitation" ADD CONSTRAINT "Invitation_invitedById_fkey" FOREIGN KEY ("invitedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 

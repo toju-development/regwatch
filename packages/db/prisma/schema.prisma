@@ -110,5 +110,4 @@ model Invitation {
   invitedBy      User?        @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId, email])
-  @@index([token])
 }
