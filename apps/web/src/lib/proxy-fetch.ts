@@ -102,7 +102,7 @@ export function getJwtFromRequest(req: NextRequest): string | null {
 export async function proxyToApi(
   req: NextRequest,
   apiPath: string,
-  options: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE' } = { method: 'GET' },
+  options: { method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' } = { method: 'GET' },
 ): Promise<NextResponse> {
   const jwt = getJwtFromRequest(req);
   if (!jwt) {
