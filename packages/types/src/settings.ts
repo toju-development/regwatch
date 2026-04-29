@@ -84,12 +84,18 @@ export const UpdateSettingsSchema = z
         message: 'WEEKLY_REQUIRES_SINGLE_DAY',
       });
     }
-    if (v.scanSchedule === 'custom' && v.scanDay.split(',').length < 1) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['scanDay'],
-        message: 'CUSTOM_REQUIRES_DAY_LIST',
-      });
+    if (v.scanSchedule === 'custom') {
+      const days = v.scanDay
+        .split(',')
+        .map((d) => d.trim())
+        .filter(Boolean);
+      if (days.length < 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['scanDay'],
+          message: 'CUSTOM_REQUIRES_DAY_LIST',
+        });
+      }
     }
   });
 

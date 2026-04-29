@@ -79,6 +79,32 @@ describe('DEFAULT_SETTINGS', () => {
   });
 });
 
+describe('UpdateSettingsSchema — custom requires non-empty day list', () => {
+  // Regression: previously `scanDay.split(',').length < 1` was dead code
+  // (always >= 1), so an empty/whitespace-only `scanDay` under `custom`
+  // mode was not caught by the cross-field guard. Per-token regex on
+  // `ScanDaySchema` already rejects these strings, but we now also
+  // surface `CUSTOM_REQUIRES_DAY_LIST` as a defensive cross-field
+  // invariant in case the regex is ever relaxed.
+  it('rejects custom schedule with empty scanDay', () => {
+    const result = UpdateSettingsSchema.safeParse({
+      ...validBody,
+      scanSchedule: 'custom',
+      scanDay: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects custom schedule with whitespace-only scanDay tokens', () => {
+    const result = UpdateSettingsSchema.safeParse({
+      ...validBody,
+      scanSchedule: 'custom',
+      scanDay: '  ,  ,  ',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('UpdateSettingsSchema — daily/weekly invariants', () => {
   it('accepts daily with any single day, weekly with single day, custom with CSV', () => {
     expect(
