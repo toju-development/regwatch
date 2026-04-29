@@ -160,8 +160,22 @@ export class InvitationsService {
    * Returns `{id, email, role, expiresAt, invitedById, status:'PENDING'}`.
    */
   async issue(actor: AuthUser, orgId: string, input: IssueInvitationDto): Promise<IssueResult> {
-    // 1-2. Format / enum.
-    if (!EMAIL_REGEX.test(input.email)) {
+    // 1-2. Format / length / enum.
+    //
+    // Trim defensively BEFORE any check so leading/trailing whitespace
+    // never sneaks into the regex (which would pass for `" foo@bar.baz "`
+    // due to `[^\s@]+`, but only because the boundary chars happen to be
+    // whitespace — not portable). Length cap MUST run before the DB
+    // INSERT: `Invitation.email` is `@db.VarChar(254)` and a 255+ char
+    // string passes the regex but explodes at the DB layer with a 500.
+    const trimmedEmail = input.email.trim();
+    if (trimmedEmail.length === 0 || trimmedEmail.length > 254) {
+      throw new BadRequestException({
+        code: INVITATIONS_ERROR_CODES.INVALID_EMAIL,
+        message: 'Email must be 1-254 characters.',
+      });
+    }
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
       throw new BadRequestException({
         code: INVITATIONS_ERROR_CODES.INVALID_EMAIL,
         message: 'Email must be a valid address.',
@@ -174,7 +188,7 @@ export class InvitationsService {
       });
     }
     const role = input.role as Role;
-    const email = input.email.toLowerCase();
+    const email = trimmedEmail.toLowerCase();
 
     // 3. PersonalOrg guard — invite into the actor's own personalOrg is
     //    nonsense (the actor is the sole member by construction; spec

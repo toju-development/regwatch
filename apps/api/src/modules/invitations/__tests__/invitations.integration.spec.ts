@@ -386,6 +386,39 @@ describe.skipIf(!dbAvailable)('InvitationsService (integration)', () => {
         response: { code: 'INVALID_ROLE' },
       });
     });
+
+    it('INVALID_EMAIL → 400 when email exceeds 254 chars (DB column cap, not a 500)', async () => {
+      // Regression: `Invitation.email` is `@db.VarChar(254)`. Pre-fix, a
+      // 255+ char string passed the regex and exploded at the DB layer
+      // with a 500. The service-level length guard catches it as 400
+      // INVALID_EMAIL — same structured code as a malformed address.
+      const { org, actor } = await seedOrgWithOwner();
+      const longLocal = 'a'.repeat(250);
+      const oversized = `${longLocal}@e.io`; // 250 + 5 = 255 chars
+      expect(oversized.length).toBe(255);
+      await expect(
+        invitations.issue(actor, org.id, { email: oversized, role: 'VIEWER' }),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: { code: 'INVALID_EMAIL' },
+      });
+    });
+
+    it('trims surrounding whitespace before validating + persisting email', async () => {
+      // Defensive: callers occasionally paste `" foo@bar.baz "`. Trim
+      // BEFORE the regex/length checks AND store the trimmed-lowercase
+      // form so downstream EMAIL_MISMATCH compares cleanly.
+      const { org, actor } = await seedOrgWithOwner();
+      const cleanEmail = `trim-${tag()}@example.com`;
+      const issued = await invitations.issue(actor, org.id, {
+        email: `   ${cleanEmail}   `,
+        role: 'VIEWER',
+      });
+      trackInvitation(issued.id);
+      expect(issued.email).toBe(cleanEmail.toLowerCase());
+      const row = await prisma.invitation.findUniqueOrThrow({ where: { id: issued.id } });
+      expect(row.email).toBe(cleanEmail.toLowerCase());
+    });
   });
 
   // ------------------------------------------------------------------ //
