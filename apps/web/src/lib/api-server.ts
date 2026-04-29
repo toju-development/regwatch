@@ -53,7 +53,7 @@ function getApiBaseUrl(): string {
 }
 
 export interface ApiServerFetchInit {
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /**
    * JSON-serialisable body. Helper handles `JSON.stringify` and
    * `Content-Type` so callers stay terse. Pass `undefined` for verbs
