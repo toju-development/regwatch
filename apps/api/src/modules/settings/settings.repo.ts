@@ -56,9 +56,11 @@ export interface SettingsRepo {
    * having validated `payload` via the canonical `UpdateSettingsSchema`
    * at the controller boundary; this repo trusts the shape.
    *
-   * Throws `Prisma.PrismaClientKnownRequestError` with code `P2025` if
-   * no row exists for `organizationId` — but the service flow guarantees
-   * the row exists (every PUT is preceded by `getOrCreate`).
+   * Lazy-creates if the row does not exist yet (spec scenario "PUT
+   * lazily creates if missing"). Implemented via `prisma.settings.upsert`
+   * keyed by `organizationId @unique`, so a standalone PUT (without a
+   * preceding GET) is always safe AND race-safe under concurrent writes
+   * (foot-gun #645: unique-index gate, not prior SELECT).
    */
   replace(organizationId: string, payload: UpdateSettingsInput): Promise<Settings>;
 }
@@ -100,14 +102,20 @@ export class PrismaSettingsRepo implements SettingsRepo {
   }
 
   async replace(organizationId: string, payload: UpdateSettingsInput): Promise<Settings> {
-    return this.prisma.settings.update({
+    const data = {
+      jurisdictions: payload.jurisdictions as unknown as Prisma.InputJsonValue,
+      scanSchedule: payload.scanSchedule,
+      scanDay: payload.scanDay,
+      scanHour: payload.scanHour,
+    };
+    // Upsert (not update) so a standalone PUT — without a preceding GET —
+    // lazily creates the row instead of throwing P2025. The unique index
+    // on `organizationId` is the race gate (foot-gun #645): two concurrent
+    // PUTs converge on a single row, last write wins on the columns.
+    return this.prisma.settings.upsert({
       where: { organizationId },
-      data: {
-        jurisdictions: payload.jurisdictions as unknown as Prisma.InputJsonValue,
-        scanSchedule: payload.scanSchedule,
-        scanDay: payload.scanDay,
-        scanHour: payload.scanHour,
-      },
+      create: { organizationId, ...data },
+      update: data,
     });
   }
 }

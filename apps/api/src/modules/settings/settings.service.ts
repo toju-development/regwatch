@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Settings } from '@regwatch/db/client';
 import {
@@ -38,6 +38,8 @@ import { SETTINGS_REPO_TOKEN, type SettingsRepo } from './settings.repo.js';
  */
 @Injectable()
 export class SettingsService {
+  private readonly logger = new Logger(SettingsService.name);
+
   constructor(
     @Inject(SETTINGS_REPO_TOKEN) private readonly repo: SettingsRepo,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
@@ -75,13 +77,16 @@ export class SettingsService {
    *      `updatedAt` (NOT `new Date()`) so the timestamp matches what
    *      callers will see on a subsequent GET.
    *   3. `this.events.emit(...)` — synchronous in-process dispatch via
-   *      EventEmitter2. Listener errors are swallowed by the emitter
-   *      (per design D13: "MUST NOT roll back the persisted state").
+   *      EventEmitter2. The emit is wrapped in try/catch + log so a
+   *      throwing listener cannot bubble up and turn a successful
+   *      persist into a 500 (design D13: the row is committed and the
+   *      caller MUST see success). The wrap is intentionally narrow —
+   *      ONLY the emit is guarded, never the repo write.
    *
    * If `repo.replace` throws, the emit MUST NOT fire — the early throw
-   * exits the method before line 3, so no extra try/catch is needed.
-   * The unit suite asserts this with a rejecting repo mock + an
-   * `expect(events.emit).not.toHaveBeenCalled()`.
+   * exits the method before the emit, so no extra try/catch is needed
+   * for that branch. The unit suite asserts this with a rejecting repo
+   * mock + an `expect(events.emit).not.toHaveBeenCalled()`.
    *
    * Caller (B3 controller) is responsible for the auth chain
    * (`JwtAuthGuard` → `MembershipFreshnessGuard` → `OrgScopeGuard` →
@@ -103,7 +108,17 @@ export class SettingsService {
       scanHour: saved.scanHour,
       updatedAt: saved.updatedAt.toISOString(),
     };
-    this.events.emit(SETTINGS_UPDATED_EVENT, evt);
+    try {
+      this.events.emit(SETTINGS_UPDATED_EVENT, evt);
+    } catch (err) {
+      // Design D13: the row is committed; a listener throw MUST NOT
+      // bubble out and surface as 500 to the caller. Log and continue.
+      this.logger.error(
+        `settings.updated listener threw for org=${organizationId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     return saved;
   }
 }
