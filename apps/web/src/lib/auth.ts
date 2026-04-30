@@ -33,6 +33,7 @@ import { fakeGoogleProvider } from '@/lib/auth-providers/fake-google';
 import { fetchMemberships, fetchMembershipsVersion } from '@/lib/auth-memberships';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
 import { clearActiveOrgOnSignOut } from '@/lib/auth-signout';
+import { isSignInAllowed } from '@/lib/auth-registration-gate';
 
 /**
  * Resolve the email provider implementation from `EMAIL_TRANSPORT`.
@@ -141,6 +142,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   callbacks: {
     ...authConfig.callbacks,
+    /**
+     * R-15-RegistrationGate — invitation-only sign-in policy. Runs BEFORE
+     * `jwt` callback; returning `false` short-circuits to
+     * `/login?error=AccessDenied`. Logic lives in `auth-registration-gate.ts`
+     * for unit testability — see that module's docstring for the allow chain.
+     */
+    async signIn({ user, profile }) {
+      const email = user?.email ?? (profile?.email as string | undefined) ?? null;
+      return isSignInAllowed(email, {
+        env: {
+          REGISTRATION_ENABLED: env.REGISTRATION_ENABLED,
+          INVITED_EMAILS: env.INVITED_EMAILS,
+        },
+        prisma,
+      });
+    },
     async jwt({ token, user, trigger }) {
       // `user` is present on initial sign-in (any provider). `trigger==='update'`
       // fires when client calls update() — we re-fetch memberships so claim

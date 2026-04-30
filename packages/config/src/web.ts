@@ -3,6 +3,44 @@ import { z } from 'zod';
 import { createCoreEnv } from './core.js';
 
 /**
+ * Parse the `INVITED_EMAILS` CSV env var into a normalised allowlist.
+ *
+ * Spec: `sdd/scanner-vertical-ar/spec` R-15-RegistrationGate / BIZ-4
+ *   (`#721` invitation-only decision).
+ * Design: ADR-13 — env-flag + allowlist registration block.
+ *
+ * Behaviour:
+ *   - Empty / whitespace-only string → empty `Set` (no allowlist).
+ *   - Otherwise: split on `,`, trim each entry, lowercase, drop empty
+ *     fragments (tolerates trailing commas + double commas).
+ *   - **Fail-fast**: every surviving entry MUST satisfy `z.string().email()`.
+ *     A malformed entry throws synchronously at module load — never a
+ *     silent drop, because a single typo in `INVITED_EMAILS` would
+ *     otherwise lock a real invitee out without any boot-time signal.
+ */
+export function parseInvitedEmails(raw: string): Set<string> {
+  const trimmed = raw.trim();
+  if (!trimmed) return new Set<string>();
+
+  const entries = trimmed
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  const emailSchema = z.string().email();
+  for (const entry of entries) {
+    const parsed = emailSchema.safeParse(entry);
+    if (!parsed.success) {
+      throw new Error(
+        `INVITED_EMAILS contains an invalid email entry: "${entry}". ` +
+          'Provide a comma-separated list of valid emails (or leave empty).',
+      );
+    }
+  }
+  return new Set(entries);
+}
+
+/**
  * Web env slice — apps/web (Next.js 15).
  *
  * Composes core + NextAuth/Resend/fake-google vars.
@@ -40,6 +78,39 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
         .enum(['0', '1'])
         .default('0')
         .transform((v) => v === '1'),
+      // ---- Registration block (sdd/scanner-vertical-ar B8 / BIZ-4) ----
+      // Public registration is CLOSED by default in MVP-5 (#721 decision).
+      // Set `REGISTRATION_ENABLED=1` to re-open public sign-ups (e.g. once
+      // billing-stripe ships post-MVP-9). Boolean coerced from '0'/'1' to
+      // mirror the AUTH_FAKE_GOOGLE convention — `z.coerce.boolean()`
+      // would treat the string "false" as truthy, which is a foot-gun.
+      REGISTRATION_ENABLED: z
+        .enum(['0', '1'])
+        .default('0')
+        .transform((v) => v === '1'),
+      // CSV allowlist used as a sign-in bypass when REGISTRATION_ENABLED=0.
+      // Empty string → empty Set. Validation is fail-fast per
+      // `parseInvitedEmails` (see helper above).
+      INVITED_EMAILS: z
+        .string()
+        .default('')
+        .transform((raw, ctx) => {
+          // Use a `ctx.addIssue` round-trip rather than throwing inside the
+          // transform — `@t3-oss/env-core` runs the parse via Zod and bubbles
+          // throws as unhandled rejections (see foot-gun
+          // `regwatch/footguns/zod-transform-throws-bubble-as-rejection`).
+          // Surfacing the error as a Zod issue lets t3-env's
+          // `onValidationError` print a clean boot-time failure.
+          try {
+            return parseInvitedEmails(raw);
+          } catch (err) {
+            ctx.addIssue({
+              code: 'custom',
+              message: err instanceof Error ? err.message : 'INVITED_EMAILS parse failed',
+            });
+            return z.NEVER;
+          }
+        }),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
