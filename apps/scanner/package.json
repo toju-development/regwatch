@@ -17,6 +17,7 @@
     "@nestjs/event-emitter": "^3.1.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/schedule": "^6.0.0",
+    "@google/genai": "^1.51.0",
     "@regwatch/config": "workspace:*",
     "@regwatch/db": "workspace:*",
     "@regwatch/types": "workspace:*",

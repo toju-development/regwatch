@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { PrismaModule } from './common/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ScanModule } from './modules/scan/scan.module.js';
 
@@ -17,6 +18,12 @@ import { ScanModule } from './modules/scan/scan.module.js';
  * only import what the controller actually consumes (avoid dead wiring).
  */
 @Module({
-  imports: [ScheduleModule.forRoot(), EventEmitterModule.forRoot(), HealthModule, ScanModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
+    PrismaModule,
+    HealthModule,
+    ScanModule,
+  ],
 })
 export class AppModule {}
