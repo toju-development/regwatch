@@ -109,4 +109,25 @@ describe('<UsageWidget>', () => {
     const bar = screen.getByTestId('usage-widget-progress-bar');
     expect(bar.getAttribute('style')).toContain('width: 100%');
   });
+
+  it('clamps aria-valuenow to [0,100] when upstream percent leaks >100 (a11y parity)', () => {
+    // PR review fix: `aria-valuenow` and the visual width MUST agree.
+    // Previously aria-valuenow received the un-clamped floored percent
+    // (e.g. 150) while the bar pinned at 100% visually — screen readers
+    // would announce "150%" for a bar that maxed at 100%.
+    render(<UsageWidget usage={buildUsage({ percent: 150 as number, costUsd: '15' })} />);
+    const track = screen.getByTestId('usage-widget-progress-track');
+    expect(track.getAttribute('aria-valuenow')).toBe('100');
+    const bar = screen.getByTestId('usage-widget-progress-bar');
+    expect(bar.getAttribute('style')).toContain('width: 100%');
+  });
+
+  it('clamps aria-valuenow to 0 when upstream percent leaks negative', () => {
+    // Symmetric guard for the lower bound.
+    render(<UsageWidget usage={buildUsage({ percent: -25 as number, costUsd: '0' })} />);
+    const track = screen.getByTestId('usage-widget-progress-track');
+    expect(track.getAttribute('aria-valuenow')).toBe('0');
+    const bar = screen.getByTestId('usage-widget-progress-bar');
+    expect(bar.getAttribute('style')).toContain('width: 0%');
+  });
 });

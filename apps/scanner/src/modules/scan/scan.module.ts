@@ -11,6 +11,13 @@
  *   - DEDUP_HELPER           → `{ dedupFindings }` value provider
  *   - SCAN_SERVICE           → ScanService class
  *
+ *     IMPORTANT (PR review fix): SCAN_SERVICE uses `useExisting: ScanService`,
+ *     not a separate `useClass`. Otherwise NestJS instantiates ScanService
+ *     TWICE — one for the token, one for the class — each with its own
+ *     `orgMutex` Map, breaking the per-org dedup invariant (ADR-6) for any
+ *     consumer that ever injects `ScanService` directly. The class provider
+ *     is registered FIRST, then SCAN_SERVICE aliases it via useExisting.
+ *
  * B4 wires (this batch):
  *   - USAGE_HELPER           → `{ getMonthlyUsage }` from `@regwatch/db/usage`
  *   - COST_HELPER            → `{ computeCostFromUsageMetadata }` value provider
@@ -95,11 +102,14 @@ import { ScanController } from './scan.controller.js';
       provide: COST_HELPER,
       useValue: { computeCostFromUsageMetadata } satisfies CostHelper,
     },
+    // Order matters: register the class FIRST, then alias the token via
+    // `useExisting` so both `@Inject(SCAN_SERVICE)` and direct `ScanService`
+    // injections resolve to the SAME singleton (ADR-6 mutex invariant).
+    ScanService,
     {
       provide: SCAN_SERVICE,
-      useClass: ScanService,
+      useExisting: ScanService,
     },
-    ScanService,
     ScanSchedulerService,
   ],
   exports: [SCAN_SERVICE, DEDUP_HELPER, ROOT_AGENT_FACTORY, USAGE_HELPER, COST_HELPER],

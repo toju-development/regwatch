@@ -41,6 +41,7 @@ import {
 import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { COST_HELPER, DEDUP_HELPER, ROOT_AGENT_FACTORY, USAGE_HELPER } from './tokens.js';
 import type { RootAgent } from './agents/root.agent.js';
+import { assertNoOrganizationId } from './agents/finding.schema.js';
 import type { dedupFindings as DedupFn } from './utils/dedup.helper.js';
 import { computeSourceUrlHash } from './utils/dedup.helper.js';
 import type {
@@ -147,6 +148,13 @@ export class ScanService {
     try {
       const result = await this.rootAgent.run({ jurisdiction });
       findings = this.dedup.dedupFindings(result.findings);
+      // Belt-and-suspenders (R-3 / INV-SP-2): even though `FindingSchema`
+      // strips `organizationId` at parse time, re-assert at the chokepoint
+      // before the trusted `organizationId` is stamped onto rows. Catches
+      // any future regression where the Zod parse is bypassed or the
+      // schema accidentally allows the field through. A throw here is a
+      // P0 tenant-isolation breach — fail LOUDLY, do not persist.
+      assertNoOrganizationId(findings);
       const computed = this.cost.computeCostFromUsageMetadata(
         result.usageMetadata as GeminiUsageMetadata,
       );

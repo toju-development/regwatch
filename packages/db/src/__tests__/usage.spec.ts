@@ -38,9 +38,29 @@ describe('startOfMonthUtc', () => {
     expect(startOfMonthUtc(NOW).toISOString()).toBe('2026-04-01T00:00:00.000Z');
   });
 
-  it('handles December → January boundary correctly', () => {
+  it('floors the last instant of December to the start of December (not January)', () => {
+    // 2026-12-31T23:59:59Z is still inside December → start-of-month is Dec 1,
+    // NOT Jan 1. This guards against a year-rollover off-by-one in
+    // `startOfMonthUtc` (e.g. accidentally adding 1 to the month).
     expect(startOfMonthUtc(new Date('2026-12-31T23:59:59Z')).toISOString()).toBe(
       '2026-12-01T00:00:00.000Z',
+    );
+  });
+
+  it('handles the first instant of January (year-boundary identity)', () => {
+    // The actual December → January rollover: Jan 1 00:00:00 must map to
+    // itself (the first instant of the new month/year). This is the
+    // boundary that the previous test name CLAIMED to cover but did not.
+    expect(startOfMonthUtc(new Date('2027-01-01T00:00:00Z')).toISOString()).toBe(
+      '2027-01-01T00:00:00.000Z',
+    );
+  });
+
+  it('floors mid-January back to Jan 1 (does NOT leak into the previous year)', () => {
+    // Belt-and-suspenders for year boundary: a date in mid-January must
+    // floor to Jan 1 of the SAME year, never to Dec 1 of the previous year.
+    expect(startOfMonthUtc(new Date('2027-01-15T08:30:00Z')).toISOString()).toBe(
+      '2027-01-01T00:00:00.000Z',
     );
   });
 });

@@ -63,8 +63,14 @@ export function UsageWidget({ usage }: UsageWidgetProps): React.ReactElement {
   const { currentMonth, isAtCap } = usage;
   // `percent` is already clamped [0,100] by the apps/api DTO mapper.
   // Floor for the integer overlay so we don't render fractional "%".
+  // Defense-in-depth: clamp to [0,100] ONCE and reuse the same value for
+  // BOTH the visual width AND `aria-valuenow`. Previously the width was
+  // clamped via `Math.min(100, Math.max(0, percent))` but `aria-valuenow`
+  // received the raw `flooredPercent` (>100 if upstream leaked) — screen
+  // readers would announce "150%" while the bar visually pinned at 100%.
+  // PR review fix.
   const flooredPercent = Math.floor(currentMonth.percent);
-  const widthPct = Math.min(100, Math.max(0, currentMonth.percent));
+  const ariaPercent = Math.max(0, Math.min(100, flooredPercent));
   const costFmt = formatCurrency(currentMonth.costUsd);
   const capFmt = formatCurrency(currentMonth.capUsd);
 
@@ -94,11 +100,11 @@ export function UsageWidget({ usage }: UsageWidgetProps): React.ReactElement {
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={flooredPercent}
+        aria-valuenow={ariaPercent}
       >
         <div
           className={`h-full transition-all ${colourForPercent(currentMonth.percent)}`}
-          style={{ width: `${widthPct}%` }}
+          style={{ width: `${ariaPercent}%` }}
           data-testid="usage-widget-progress-bar"
         />
       </div>
