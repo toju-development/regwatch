@@ -11,7 +11,10 @@
  *   - DEDUP_HELPER           → `{ dedupFindings }` value provider
  *   - SCAN_SERVICE           → ScanService class
  *
- * B4 will add: USAGE_HELPER, COST_HELPER.
+ * B4 wires (this batch):
+ *   - USAGE_HELPER           → `{ getMonthlyUsage }` from `@regwatch/db/usage`
+ *   - COST_HELPER            → `{ computeCostFromUsageMetadata }` value provider
+ *
  * B5 will add: ScanScheduler (@Cron), ScanController (POST /scan/trigger).
  *
  * Foot-gun #667 (tsx + NestJS DI): every provider uses an explicit token; the
@@ -24,11 +27,13 @@ import { Module } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 
 import {
+  COST_HELPER,
   DEDUP_HELPER,
   GEMINI_CLIENT,
   JURISDICTION_SCANNER_FACTORY,
   ROOT_AGENT_FACTORY,
   SCAN_SERVICE,
+  USAGE_HELPER,
 } from './tokens.js';
 import {
   createJurisdictionScannerFactory,
@@ -36,7 +41,14 @@ import {
 } from './agents/jurisdiction-scanner.factory.js';
 import { createRootAgent } from './agents/root.agent.js';
 import { dedupFindings } from './utils/dedup.helper.js';
-import { ScanService, type DedupHelper } from './scan.service.js';
+import { computeCostFromUsageMetadata } from './utils/cost.helper.js';
+import { getMonthlyUsage } from '@regwatch/db/usage';
+import {
+  ScanService,
+  type CostHelper,
+  type DedupHelper,
+  type UsageHelper,
+} from './scan.service.js';
 
 @Module({
   providers: [
@@ -71,11 +83,19 @@ import { ScanService, type DedupHelper } from './scan.service.js';
       useValue: { dedupFindings } satisfies DedupHelper,
     },
     {
+      provide: USAGE_HELPER,
+      useValue: { getMonthlyUsage } satisfies UsageHelper,
+    },
+    {
+      provide: COST_HELPER,
+      useValue: { computeCostFromUsageMetadata } satisfies CostHelper,
+    },
+    {
       provide: SCAN_SERVICE,
       useClass: ScanService,
     },
     ScanService,
   ],
-  exports: [SCAN_SERVICE, DEDUP_HELPER, ROOT_AGENT_FACTORY],
+  exports: [SCAN_SERVICE, DEDUP_HELPER, ROOT_AGENT_FACTORY, USAGE_HELPER, COST_HELPER],
 })
 export class ScanModule {}

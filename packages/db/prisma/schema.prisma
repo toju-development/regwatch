@@ -206,11 +206,14 @@ model Alert {
 }
 
 // One row per scan attempt (cron tick or manual trigger). `costUsd` precision
-// `Decimal(10,4)` covers per-org monthly cap of $10 with sub-cent granularity
-// (4 decimal places ≈ $0.0001 → max value $999,999.9999 — way over cap).
+// `Decimal(10,6)` is REQUIRED by spec R-14 + design ADR-7: Gemini 2.5 Flash
+// per-token costs land in the 1e-6 USD range (input $0.30/1M = $3e-7/token);
+// the original (10,4) precision (B1 / migration #7) truncated those values
+// silently and was corrected by migration #8 (`fix_scanlog_costusd_precision`,
+// B4.0 of MVP-5). Max value 9,999.999999 — still safely above the $10 cap.
 //
 // Index `(organizationId, startedAt)` powers the monthly-sum query in
-// `UsageHelper.canScanThisMonth` (R-11, INV-UT-1).
+// `getMonthlyUsage` (R-11, R-14, INV-UT-1).
 model ScanLog {
   id             String       @id @default(cuid())
   organizationId String
@@ -226,7 +229,9 @@ model ScanLog {
   /// Sum of input + output tokens (denormalized for fast SUM aggregation).
   tokensUsed Int     @default(0)
   /// USD cost. ALWAYS Prisma.Decimal — never JS Number (INV-SP-3).
-  costUsd    Decimal @default(0) @db.Decimal(10, 4)
+  /// Precision (10,6) per spec R-14 + design ADR-7 — covers Gemini 2.5
+  /// Flash sub-cent token costs (1e-6 USD/token range) without truncation.
+  costUsd    Decimal @default(0) @db.Decimal(10, 6)
 
   alertsFound Int @default(0)
 
