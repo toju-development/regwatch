@@ -346,6 +346,9 @@ importers:
       '@prisma/client':
         specifier: ^6.2.0
         version: 6.19.3(prisma@6.19.3(typescript@5.7.2))(typescript@5.7.2)
+      '@regwatch/types':
+        specifier: workspace:*
+        version: link:../types
       server-only:
         specifier: ^0.0.1
         version: 0.0.1

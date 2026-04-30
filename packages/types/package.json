@@ -19,6 +19,14 @@
     "./events": {
       "types": "./src/events.ts",
       "default": "./src/events.ts"
+    },
+    "./scanner": {
+      "types": "./src/scanner.ts",
+      "default": "./src/scanner.ts"
+    },
+    "./pricing": {
+      "types": "./src/pricing.ts",
+      "default": "./src/pricing.ts"
     }
   },
   "scripts": {

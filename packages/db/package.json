@@ -19,6 +19,10 @@
     "./tokens": {
       "types": "./src/tokens.ts",
       "default": "./src/tokens.ts"
+    },
+    "./usage": {
+      "types": "./src/usage.ts",
+      "default": "./src/usage.ts"
     }
   },
   "scripts": {
@@ -37,6 +41,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.2.0",
+    "@regwatch/types": "workspace:*",
     "server-only": "^0.0.1"
   },
   "devDependencies": {

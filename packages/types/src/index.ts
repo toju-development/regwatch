@@ -13,3 +13,5 @@ export * from './auth.js';
 export * from './jurisdictions.js';
 export * from './settings.js';
 export * from './events.js';
+export * from './scanner.js';
+export * from './pricing.js';
