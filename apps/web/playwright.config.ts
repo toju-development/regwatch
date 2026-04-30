@@ -55,6 +55,20 @@ export default defineConfig({
         NODE_ENV: 'development',
         EMAIL_TRANSPORT: 'memory',
         AUTH_FAKE_GOOGLE: '1',
+        // MVP-5 / B8 — `auth-registration-gate.ts` blocks fresh-email
+        // sign-ins by default (`REGISTRATION_ENABLED` defaults to false
+        // per `packages/config/src/web.ts`). Every E2E spec mints a
+        // brand-new email via `uniqueEmail()` and signs in via
+        // fake-google — without this flag, the gate trips and `signIn`
+        // returns false, breaking ALL existing specs (auth, members,
+        // invitations, org-switcher, …). The R-15 (registration gate)
+        // matrix is covered by 9 unit specs in
+        // `apps/web/src/lib/__tests__/auth-registration-gate.spec.ts`;
+        // a full E2E matrix would require a 2nd webServer instance
+        // with the gate enabled (deferred — see B9 deviation notes in
+        // `sdd/scanner-vertical-ar/apply-progress`).
+        // Foot-gun: `regwatch/footguns/playwright-config-missing-registration-enabled-after-b8`.
+        REGISTRATION_ENABLED: '1',
         NEXT_PUBLIC_API_URL: `http://localhost:${API_PORT}`,
         // Server-side base URL used by /api/org/* PROXY route handlers
         // (PROXY MODE — see engram regwatch/decisions/org-membership-proxy-mode).
