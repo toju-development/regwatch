@@ -15,7 +15,9 @@
  *   - USAGE_HELPER           → `{ getMonthlyUsage }` from `@regwatch/db/usage`
  *   - COST_HELPER            → `{ computeCostFromUsageMetadata }` value provider
  *
- * B5 will add: ScanScheduler (@Cron), ScanController (POST /scan/trigger).
+ * B5 wires (this batch):
+ *   - ScanSchedulerService   → `@Cron(EVERY_HOUR)` global tick (ADR-3).
+ *   - ScanController         → `POST /scan/trigger` manual endpoint (ADR-10).
  *
  * Foot-gun #667 (tsx + NestJS DI): every provider uses an explicit token; the
  * NestJS class-token is allowed only for the framework-owned `EventEmitter2`
@@ -49,8 +51,11 @@ import {
   type DedupHelper,
   type UsageHelper,
 } from './scan.service.js';
+import { ScanSchedulerService } from './scan-scheduler.service.js';
+import { ScanController } from './scan.controller.js';
 
 @Module({
+  controllers: [ScanController],
   providers: [
     {
       provide: GEMINI_CLIENT,
@@ -95,6 +100,7 @@ import {
       useClass: ScanService,
     },
     ScanService,
+    ScanSchedulerService,
   ],
   exports: [SCAN_SERVICE, DEDUP_HELPER, ROOT_AGENT_FACTORY, USAGE_HELPER, COST_HELPER],
 })

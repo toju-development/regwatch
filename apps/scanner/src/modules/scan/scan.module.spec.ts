@@ -4,6 +4,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
+import { AuthModule } from '../../common/auth/auth.module.js';
 import { ScanModule } from './scan.module.js';
 import { GEMINI_CLIENT, SCAN_SERVICE } from './tokens.js';
 
@@ -29,7 +30,7 @@ class StubPrismaModule {}
 describe('ScanModule', () => {
   it('compiles as an isolated NestJS module shell', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [EventEmitterModule.forRoot(), StubPrismaModule, ScanModule],
+      imports: [EventEmitterModule.forRoot(), StubPrismaModule, AuthModule, ScanModule],
     })
       .overrideProvider(GEMINI_CLIENT)
       .useValue({ models: { generateContent: async () => ({ text: '{"findings":[]}' }) } })
