@@ -84,21 +84,44 @@ export class PrismaSettingsRepo implements SettingsRepo {
   }
 
   async upsertDefault(organizationId: string): Promise<Settings> {
-    return this.prisma.settings.upsert({
-      where: { organizationId },
-      create: {
-        organizationId,
-        jurisdictions: DEFAULT_SETTINGS.jurisdictions as unknown as Prisma.InputJsonValue,
-        scanSchedule: DEFAULT_SETTINGS.scanSchedule,
-        scanDay: DEFAULT_SETTINGS.scanDay,
-        scanHour: DEFAULT_SETTINGS.scanHour,
-      },
-      // Empty `update` is intentional — the lazy-create contract is
-      // "create if missing, otherwise return existing untouched". A
-      // concurrent caller winning the unique-index race MUST NOT have
-      // their row clobbered by the loser (foot-gun #645).
-      update: {},
-    });
+    // Why not `prisma.upsert(... update: {})`?
+    //
+    // Prisma compiles `upsert` with an empty `update` clause to a
+    // best-effort SELECT-then-INSERT pattern (NOT atomic
+    // `INSERT ... ON CONFLICT DO UPDATE` — the ON CONFLICT branch needs
+    // a non-empty update SET). Under N concurrent first-GETs for the
+    // same orgId, all N may race past the SELECT, all N attempt
+    // INSERT, one wins, the rest throw P2002 (unique-index violation
+    // on `Settings.organizationId`) which surfaces as 500.
+    //
+    // Reproduced by `R-Settings-Race-Safe — 5 concurrent first-GETs`
+    // under full-suite parallel load (every ~15 vitest runs).
+    //
+    // Fix: try INSERT first; on P2002, re-fetch the winner's row.
+    // Both branches are race-safe via the unique index (foot-gun #645).
+    try {
+      return await this.prisma.settings.create({
+        data: {
+          organizationId,
+          jurisdictions: DEFAULT_SETTINGS.jurisdictions as unknown as Prisma.InputJsonValue,
+          scanSchedule: DEFAULT_SETTINGS.scanSchedule,
+          scanDay: DEFAULT_SETTINGS.scanDay,
+          scanHour: DEFAULT_SETTINGS.scanHour,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // A concurrent caller won the INSERT — re-read their row.
+        // `findUnique` MUST find it: the unique index is the gate, and
+        // the winner's transaction has committed by the time we see
+        // P2002 in PostgreSQL READ COMMITTED.
+        const winner = await this.prisma.settings.findUnique({
+          where: { organizationId },
+        });
+        if (winner) return winner;
+      }
+      throw err;
+    }
   }
 
   async replace(organizationId: string, payload: UpdateSettingsInput): Promise<Settings> {
