@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCoreEnv } from '../core.js';
-import { createWebEnv } from '../web.js';
+import { createWebEnv, parseInvitedEmails } from '../web.js';
 import { createApiEnv } from '../api.js';
 
 const VALID_SECRET = 'a'.repeat(48); // ≥32 chars
@@ -77,6 +77,8 @@ describe('createApiEnv', () => {
       'AUTH_EMAIL_FROM',
       'EMAIL_TRANSPORT',
       'AUTH_FAKE_GOOGLE',
+      'REGISTRATION_ENABLED',
+      'INVITED_EMAILS',
     ]) {
       expect(keys).not.toContain(banned);
     }
@@ -138,5 +140,80 @@ describe('createWebEnv', () => {
 
   it('rejects malformed AUTH_EMAIL_FROM', () => {
     expect(() => createWebEnv({ ...validWebEnv(), AUTH_EMAIL_FROM: 'not-an-email' })).toThrow();
+  });
+
+  // -------------------------------------------------------------------
+  // Registration block (sdd/scanner-vertical-ar B8 / BIZ-4 — #721)
+  // Spec R-15-RegistrationGate / Design ADR-13.
+  // -------------------------------------------------------------------
+
+  it('REGISTRATION_ENABLED defaults to false (closed) when unset', () => {
+    const env = createWebEnv({ ...validWebEnv() });
+    expect(env.REGISTRATION_ENABLED).toBe(false);
+    expect(env.INVITED_EMAILS).toBeInstanceOf(Set);
+    expect(env.INVITED_EMAILS.size).toBe(0);
+  });
+
+  it('REGISTRATION_ENABLED="1" coerces to boolean true', () => {
+    const env = createWebEnv({ ...validWebEnv(), REGISTRATION_ENABLED: '1' });
+    expect(env.REGISTRATION_ENABLED).toBe(true);
+  });
+
+  it('REGISTRATION_ENABLED rejects values outside the 0/1 enum (NOT z.coerce.boolean)', () => {
+    // Foot-gun guard: `z.coerce.boolean()` would silently treat "false" as
+    // truthy. The 0/1 enum is intentional — see web.ts inline comment.
+    expect(() => createWebEnv({ ...validWebEnv(), REGISTRATION_ENABLED: 'false' })).toThrow();
+    expect(() => createWebEnv({ ...validWebEnv(), REGISTRATION_ENABLED: 'true' })).toThrow();
+  });
+
+  it('INVITED_EMAILS empty string parses to an empty Set', () => {
+    const env = createWebEnv({ ...validWebEnv(), INVITED_EMAILS: '' });
+    expect(env.INVITED_EMAILS.size).toBe(0);
+  });
+
+  it('INVITED_EMAILS whitespace-only string parses to an empty Set', () => {
+    const env = createWebEnv({ ...validWebEnv(), INVITED_EMAILS: '   ' });
+    expect(env.INVITED_EMAILS.size).toBe(0);
+  });
+
+  it('INVITED_EMAILS CSV is split, trimmed, lowercased, and stored as a Set', () => {
+    const env = createWebEnv({
+      ...validWebEnv(),
+      INVITED_EMAILS: ' Alice@Example.com, BOB@x.io ,carol@x.io',
+    });
+    expect(env.INVITED_EMAILS.has('alice@example.com')).toBe(true);
+    expect(env.INVITED_EMAILS.has('bob@x.io')).toBe(true);
+    expect(env.INVITED_EMAILS.has('carol@x.io')).toBe(true);
+    expect(env.INVITED_EMAILS.size).toBe(3);
+  });
+
+  it('INVITED_EMAILS tolerates trailing commas and double commas', () => {
+    const env = createWebEnv({ ...validWebEnv(), INVITED_EMAILS: 'a@b.io,,c@d.io,' });
+    expect(env.INVITED_EMAILS.size).toBe(2);
+    expect(env.INVITED_EMAILS.has('a@b.io')).toBe(true);
+    expect(env.INVITED_EMAILS.has('c@d.io')).toBe(true);
+  });
+
+  it('INVITED_EMAILS fail-fast on a single malformed entry (no silent drop)', () => {
+    // t3-env wraps the underlying Zod issue in a generic
+    // "Invalid environment variables" Error and logs the original
+    // INVITED_EMAILS message to stderr (foot-gun: cannot regex-match the
+    // wrapped Error.message). Asserting `.toThrow()` is enough — the
+    // helper-level test below pins the exact wording.
+    expect(() =>
+      createWebEnv({ ...validWebEnv(), INVITED_EMAILS: 'alice@x.io,not-an-email' }),
+    ).toThrow();
+  });
+});
+
+describe('parseInvitedEmails (helper)', () => {
+  it('throws with the offending entry quoted in the message', () => {
+    // Exercises the helper directly to pin the message contract that
+    // operators rely on when chasing boot-time failures.
+    expect(() => parseInvitedEmails('alice@x.io, broken')).toThrow(/"broken"/);
+  });
+
+  it('throws with INVITED_EMAILS named in the message', () => {
+    expect(() => parseInvitedEmails('not-an-email')).toThrow(/INVITED_EMAILS/);
   });
 });

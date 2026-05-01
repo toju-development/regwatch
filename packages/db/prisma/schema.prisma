@@ -15,6 +15,33 @@ enum Role {
   VIEWER
 }
 
+// Scanner enums (sdd/scanner-vertical-ar/design ADR-7, migration #7).
+// `AlertSource` is append-only — MVP-13 will add CNBV_MX_*, SBS_PE_*, BR_BCB_*,
+// CL_CMF_*. PG enum extension is cheap (no `ALTER TYPE … RENAME`).
+enum AlertSource {
+  BCRA_COMUNICADOS_A
+  BCRA_COMUNICADOS_B
+  BCRA_COMUNICADOS_C
+  CNV_RESOLUCIONES_GENERALES
+}
+
+enum Severity {
+  UNKNOWN
+  INFO
+  MEDIUM
+  HIGH
+}
+
+enum ScanStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  // Cap-enforcement short-circuit (R-5). Name "EXCEEDED" wins over "REACHED"
+  // because the gate fires AFTER the cap was crossed by the previous run.
+  SKIPPED_CAP_EXCEEDED
+}
+
 model Organization {
   id             String       @id @default(cuid())
   slug           String       @unique @db.VarChar(64)
@@ -25,6 +52,8 @@ model Organization {
   invitations    Invitation[]
   personalOfUser User?        @relation("PersonalOrg")
   settings       Settings?
+  alerts         Alert[]
+  scanLogs       ScanLog[]
 }
 
 model User {
@@ -135,4 +164,82 @@ model Settings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── Scanner domain (sdd/scanner-vertical-ar — MVP-5) ──────────────────────
+//
+// Sole writer: `apps/scanner` ScanService.runScan(orgId) inside a single
+// `prisma.$transaction` (INV-SP-1, R-3). organizationId comes ONLY from the
+// trusted `orgId` parameter — NEVER from LLM agent output (INV-SP-2).
+
+// Discovered regulatory finding. Composite unique on
+// (organizationId, sourceUrlHash) is the dedup gate (R-4, INV-DB-1) — same
+// finding can exist in multiple orgs (R-4 cross-org scenario).
+model Alert {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  source        AlertSource
+  sourceUrl     String      @db.VarChar(2048)
+  /// sha256 hex of normalizeUrl(sourceUrl). 64 chars. Never null.
+  sourceUrlHash String      @db.VarChar(64)
+  title         String      @db.VarChar(500)
+  /// Optional — populated by LLM finding; nullable for forward-compat.
+  summary       String?     @db.Text
+  /// Populated by future fetch step (MVP-6/8). Null in MVP-5.
+  fullContent   String?     @db.Text
+  publishedAt   DateTime?
+  detectedAt    DateTime    @default(now())
+  severity      Severity    @default(UNKNOWN)
+  /// Populated by MVP-6 classifier. Null in MVP-5.
+  regulationId  String?
+
+  scanLogId String?
+  scanLog   ScanLog? @relation(fields: [scanLogId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, sourceUrlHash])
+  @@index([organizationId, detectedAt])
+  @@index([organizationId, source])
+}
+
+// One row per scan attempt (cron tick or manual trigger). `costUsd` precision
+// `Decimal(10,6)` is REQUIRED by spec R-14 + design ADR-7: Gemini 2.5 Flash
+// per-token costs land in the 1e-6 USD range (input $0.30/1M = $3e-7/token);
+// the original (10,4) precision (B1 / migration #7) truncated those values
+// silently and was corrected by migration #8 (`fix_scanlog_costusd_precision`,
+// B4.0 of MVP-5). Max value 9,999.999999 — still safely above the $10 cap.
+//
+// Index `(organizationId, startedAt)` powers the monthly-sum query in
+// `getMonthlyUsage` (R-11, R-14, INV-UT-1).
+model ScanLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Jurisdiction code, e.g. `'AR'`. String for forward-compat (MVP-13).
+  jurisdiction String      @db.VarChar(8)
+  /// Optional source URL when the scan was scoped to a single feed.
+  sourceUrl    String?     @db.VarChar(2048)
+  status       ScanStatus
+  errorMsg     String?     @db.Text
+
+  /// Sum of input + output tokens (denormalized for fast SUM aggregation).
+  tokensUsed Int     @default(0)
+  /// USD cost. ALWAYS Prisma.Decimal — never JS Number (INV-SP-3).
+  /// Precision (10,6) per spec R-14 + design ADR-7 — covers Gemini 2.5
+  /// Flash sub-cent token costs (1e-6 USD/token range) without truncation.
+  costUsd    Decimal @default(0) @db.Decimal(10, 6)
+
+  alertsFound Int @default(0)
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  alerts Alert[]
+
+  @@index([organizationId, startedAt])
+  @@index([organizationId, status])
 }

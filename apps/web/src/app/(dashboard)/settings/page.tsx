@@ -29,6 +29,11 @@ const SETTINGS_LINKS: ReadonlyArray<{ href: string; label: string; description: 
     label: 'Preferences',
     description: 'Pick jurisdictions and configure scan cadence.',
   },
+  {
+    href: '/settings/usage',
+    label: 'Usage',
+    description: 'Monthly LLM cost vs the $10/mo cap.',
+  },
 ];
 
 export default async function SettingsIndexPage(): Promise<React.ReactElement> {
