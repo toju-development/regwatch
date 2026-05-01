@@ -85,8 +85,9 @@ describe('SettingsService', () => {
 
     it('lazy-creates with DEFAULT_SETTINGS when no row exists yet (race-safe via upsertDefault)', async () => {
       // R-Settings-Get-Or-Create: "First-GET MUST create with defaults"
-      // R-Settings-Race-Safe: foot-gun #645 — the unique-index `upsert`
-      // with empty `update: {}` is the gate, not the prior SELECT.
+      // R-Settings-Race-Safe: foot-gun #645 — `upsertDefault` tries
+      // INSERT and recovers from P2002 via findUnique; the unique index
+      // on `organizationId` is the gate, not the prior SELECT.
       const created = makeSettingsRow();
       const repo = makeRepo({
         findByOrgId: vi.fn().mockResolvedValue(null),

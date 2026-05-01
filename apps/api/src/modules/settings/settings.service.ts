@@ -51,15 +51,17 @@ export class SettingsService {
    *
    * Order:
    *   1. SELECT — happy path returns immediately when the row exists.
-   *   2. UPSERT — race-safe lazy-create. The empty `update: {}` branch
-   *      means a concurrent caller that won the unique-index race does
-   *      NOT have their row clobbered (foot-gun #645).
+   *   2. INSERT (race-safe) — `repo.upsertDefault` tries `create` and,
+   *      on `P2002` (concurrent caller won the unique-index race on
+   *      `organizationId`), re-reads the winner's row. Foot-gun #645:
+   *      the unique index is the gate, NOT the prior SELECT — two
+   *      callers seeing `null` here is fine, exactly one wins the
+   *      INSERT and the other recovers via the P2002 branch.
    *
-   * The two-step (SELECT-then-UPSERT) is intentional: the steady-state
+   * The two-step (SELECT-then-create) is intentional: the steady-state
    * cost is ONE SELECT per request; only the rare first-GET pays the
-   * UPSERT round-trip. Skipping straight to `upsert` would issue an
-   * UPDATE statement on every call (even for the no-op branch), which
-   * grabs row locks under READ COMMITTED.
+   * INSERT round-trip. Skipping straight to `upsertDefault` would issue
+   * a write attempt on every call.
    */
   async getOrCreate(organizationId: string): Promise<Settings> {
     const existing = await this.repo.findByOrgId(organizationId);

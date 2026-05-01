@@ -12,12 +12,13 @@ import { SETTINGS_REPO_TOKEN } from './tokens.js';
  *   - {@link findByOrgId}    — straight SELECT for the read path. Returns
  *     `null` when no row exists yet (the lazy-create case the service
  *     resolves via {@link upsertDefault}).
- *   - {@link upsertDefault}  — race-safe lazy-create on first GET. Uses
- *     `prisma.settings.upsert(...)` with an EMPTY `update: {}` so a
- *     concurrent caller that wins the unique-index race on
- *     `organizationId` does NOT clobber the row that already exists
- *     (foot-gun #645: rely on the unique index as the gate, never on a
- *     prior SELECT).
+ *   - {@link upsertDefault}  — race-safe lazy-create on first GET.
+ *     Tries `prisma.settings.create(...)` and, on `P2002` (unique
+ *     violation on `organizationId`), re-reads the winner's row via
+ *     `findUnique`. The unique index is the race gate (foot-gun #645:
+ *     never gate on a prior SELECT). See the inline comment on the
+ *     method body for why `prisma.upsert(... update: {})` is NOT atomic
+ *     and was rejected.
  *   - {@link replace}        — PUT semantics per design D8 (full replace,
  *     no PATCH). Single `UPDATE` keyed by `organizationId`; the row is
  *     guaranteed to exist by the controller flow (every `PUT` is
@@ -40,14 +41,15 @@ export interface SettingsRepo {
   findByOrgId(organizationId: string): Promise<Settings | null>;
 
   /**
-   * Race-safe lazy-create. If a row exists, returns it unchanged
-   * (`update: {}`). Otherwise inserts {@link DEFAULT_SETTINGS} keyed by
-   * `organizationId` and returns the new row.
+   * Race-safe lazy-create. Inserts {@link DEFAULT_SETTINGS} keyed by
+   * `organizationId`; if a concurrent caller wins the unique-index race
+   * (Prisma `P2002` on `Settings.organizationId`), re-reads and returns
+   * the winner's row instead of throwing.
    *
-   * The unique constraint on `Settings.organizationId` is the race gate
-   * (foot-gun #645): a concurrent caller that wins the INSERT does NOT
-   * see the loser overwrite their row, because the empty-`update`
-   * branch is a no-op SQL UPDATE that touches no columns.
+   * The unique constraint is the race gate (foot-gun #645: never gate
+   * on a prior SELECT). See the inline comment on the implementation
+   * for why `prisma.upsert(... update: {})` is NOT atomic and was
+   * rejected in favor of try-create / catch-P2002 / find.
    */
   upsertDefault(organizationId: string): Promise<Settings>;
 
