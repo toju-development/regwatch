@@ -28,6 +28,17 @@ const SHARED_AUTH = {
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // Force single-worker execution. Multi-worker contention against
+  // the SHARED dev servers (Next.js + Nest tsx) caused intermittent
+  // 30s timeouts on lightweight routes (e.g. POST /api/org/switch in
+  // members.spec.ts > "self-leave on non-personal org" — pre-existing
+  // flake from MVP-3b3a, surfaced again in MVP-5 verify #744). The
+  // dev servers do NOT scale with concurrent test workers, and there
+  // is no isolation between specs at the DB layer either. Running
+  // sequentially is the simplest robust fix and keeps full-suite
+  // wall-time bounded (the suite was already non-parallel within
+  // files via fullyParallel: false).
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
