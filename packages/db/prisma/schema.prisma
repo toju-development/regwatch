@@ -25,6 +25,10 @@ enum AlertSource {
   CNV_RESOLUCIONES_GENERALES
 }
 
+// MVP-6 amendment (B1.1 / sdd/classifier-and-writer spec P1): enum will be
+// reshaped in migration #9 to 5-bucket: UNKNOWN | LOW | MEDIUM | HIGH | CRITICAL.
+// INFO is removed; LOW replaces it for low-impact findings. CRITICAL added for
+// systemic/sanctions-level findings. Alert table confirmed empty before apply.
 enum Severity {
   UNKNOWN
   INFO
