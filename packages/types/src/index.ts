@@ -16,3 +16,4 @@ export * from './events.js';
 export * from './scanner.js';
 export * from './pricing.js';
 export * from './security/index.js';
+export * from './enrichment.js';
