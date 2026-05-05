@@ -10,7 +10,12 @@
  *   used by the chokepoint to harden against accidental schema regressions
  *   (defense-in-depth — see scan.service.ts).
  *
+ * MVP-6 (B1.2): `assertNoOrganizationId` is now a thin wrapper around the
+ *   generic `assertNoForbiddenKeys` from `packages/types/src/security`.
+ *   Back-compat signature is preserved — all existing call sites unchanged.
+ *
  * Spec: sdd/scanner-vertical-ar/spec R-1-AdkTopology, R-3-ScanServiceChokepoint.
+ *   sdd/classifier-and-writer/spec R-6, INV-AE-1, ADR-11.
  * Design: sdd/scanner-vertical-ar/design ADR-2, ADR-15.
  */
 export {
@@ -24,6 +29,7 @@ export {
 } from '@regwatch/types/scanner';
 
 import { FindingSchema } from '@regwatch/types/scanner';
+import { assertNoForbiddenKeys } from '@regwatch/types';
 
 /**
  * Compile-time + runtime assertion that `FindingSchema` does NOT declare an
@@ -34,60 +40,16 @@ export function findingSchemaShapeKeys(): readonly string[] {
 }
 
 /**
- * Match any key that looks like an org id, regardless of casing or
- * separator. Catches `organizationId`, `OrganizationId`, `organization_id`,
- * `organization-id`, `organizationID`, etc.
- */
-const ORG_ID_KEY_REGEX = /^organization[\s_-]?id$/i;
-
-/**
  * Defense-in-depth runtime guard: throws if `obj` (or ANY nested object/
  * array element) carries a key that looks like an organization id.
  *
- * Rationale:
- *   `FindingSchema` already strips unknown keys at parse time, so a
- *   well-formed Zod-parsed `Finding` cannot carry `organizationId`. This
- *   guard is the SECOND fence — invoked at the `ScanService` chokepoint
- *   right before the trusted `organizationId` is stamped onto the row.
- *   It catches:
- *     1. Schema regressions that accidentally allow the field through.
- *     2. Code paths that bypass `FindingSchema.parse` and persist raw LLM
- *        output (a future bug we want to fail LOUDLY, not silently).
- *
- * Throws a synchronous `Error` — callers MUST treat this as a P0 tenant-
- * isolation breach and abort the persist.
+ * MVP-6 (B1.2): now delegates to generic `assertNoForbiddenKeys` from
+ * `packages/types/src/security`. Back-compat wrapper — existing call sites
+ * in `scan.service.ts` call `assertNoOrganizationId(obj)` unchanged.
  *
  * Spec: sdd/scanner-vertical-ar/spec R-3-ScanServiceChokepoint, INV-SP-2.
  * Design: sdd/scanner-vertical-ar/design ADR-2, ADR-15.
  */
 export function assertNoOrganizationId(obj: unknown): void {
-  // Guard against cycles in pathological input (LLM output is JSON, so
-  // cycles are not expected, but be defensive — an Error is better than
-  // a stack overflow).
-  const seen = new WeakSet<object>();
-
-  const walk = (node: unknown, path: string): void => {
-    if (node === null || node === undefined) return;
-    if (typeof node !== 'object') return;
-    if (seen.has(node as object)) return;
-    seen.add(node as object);
-
-    if (Array.isArray(node)) {
-      node.forEach((item, idx) => walk(item, `${path}[${idx}]`));
-      return;
-    }
-
-    for (const key of Object.keys(node as Record<string, unknown>)) {
-      if (ORG_ID_KEY_REGEX.test(key)) {
-        throw new Error(
-          `assertNoOrganizationId: forbidden key "${key}" found at ${path || '<root>'}. ` +
-            'LLM-derived organization ids are a P0 tenant-isolation breach. ' +
-            'Spec: sdd/scanner-vertical-ar/spec R-3, INV-SP-2.',
-        );
-      }
-      walk((node as Record<string, unknown>)[key], path ? `${path}.${key}` : key);
-    }
-  };
-
-  walk(obj, '');
+  assertNoForbiddenKeys(obj, ['organizationId']);
 }
