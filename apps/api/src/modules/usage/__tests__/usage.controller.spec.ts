@@ -44,6 +44,8 @@ function makeUsage(overrides: Partial<MonthlyUsage> = {}): MonthlyUsage {
   return {
     tokensUsed: 12_345,
     costUsd: new Prisma.Decimal('1.234567'),
+    scanCostUsd: new Prisma.Decimal('1.234567'),
+    enrichmentCostUsd: new Prisma.Decimal('0'),
     scansCount: 3,
     capUsd: new Prisma.Decimal('10'),
     isAtCap: false,

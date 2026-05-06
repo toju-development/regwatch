@@ -57,6 +57,8 @@ function makeSettingsRow(overrides: Partial<Settings> = {}): Settings {
     scanHour: DEFAULT_SETTINGS.scanHour,
     createdAt: FIXED_NOW,
     updatedAt: FIXED_NOW,
+    outputLanguage: null,
+    lastSkippedCapAt: null,
     ...overrides,
   };
 }
