@@ -41,3 +41,4 @@ process.env.PORT = process.env.PORT ?? '3002';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://test:test@localhost:5432/test';
 process.env.AUTH_SECRET =
   process.env.AUTH_SECRET ?? 'test-auth-secret-must-be-at-least-32-chars-ok';
+process.env.SCANNER_INTERNAL_SECRET = process.env.SCANNER_INTERNAL_SECRET ?? 'test-internal-secret';
