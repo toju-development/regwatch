@@ -10,6 +10,7 @@ const baseEnv = {
   NODE_ENV: 'test',
   DATABASE_URL: VALID_DB,
   AUTH_SECRET: VALID_SECRET,
+  SCANNER_INTERNAL_SECRET: 'test-internal-secret',
 };
 
 /**
