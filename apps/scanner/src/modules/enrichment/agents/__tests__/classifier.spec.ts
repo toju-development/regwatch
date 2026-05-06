@@ -15,7 +15,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AlertTopic, type AlertTopicValue } from '@regwatch/types';
 
-import { buildClassifierPrompt, createClassifierAgentFactory } from '../classifier.factory.js';
+import {
+  buildClassifierPrompt,
+  createClassifierAgentFactory,
+  type ClassifierAgent,
+} from '../classifier.factory.js';
 import { runClassifier } from '../classifier.runner.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
