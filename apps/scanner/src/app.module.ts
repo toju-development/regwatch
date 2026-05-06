@@ -4,19 +4,23 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './common/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ScanModule } from './modules/scan/scan.module.js';
+import { EnrichmentModule } from './modules/enrichment/enrichment.module.js';
 import { AuthModule } from './common/auth/auth.module.js';
 
 /**
- * MVP-5 root module for `apps/scanner`.
+ * Root module for `apps/scanner`.
  * Design: sdd/scanner-vertical-ar/design ADR-3 (cron) + ADR-14 (events).
+ *       sdd/classifier-and-writer/design ADR-10 (EnrichmentModule wiring).
  *
- * - `ScheduleModule.forRoot()` enables `@Cron` discovery for `ScanScheduler` (B5).
- * - `EventEmitterModule.forRoot()` powers `scan.completed` post-commit emit (B5/B3).
- * - `ScanModule` is the placeholder shell; providers populated in B3-B5.
+ * - `ScheduleModule.forRoot()` enables `@Cron` discovery for `ScanScheduler`.
+ * - `EventEmitterModule.forRoot()` powers `scan.completed` / `enrichment.completed`
+ *   events. Registered ONCE here — do NOT add in child modules.
+ * - `ScanModule` wires scanner agents, dedup, usage helper.
+ * - `EnrichmentModule` wires Classifier + Writer pipeline (MVP-6).
  *
  * Auth guards live in `AuthModule` (Global). Per-route `@UseGuards(JwtAuthGuard,
- * RolesGuard)` on `ScanController` — NOT registered as APP_GUARD because
- * health endpoints must remain unauthenticated.
+ * RolesGuard)` on controllers — NOT registered as APP_GUARD because health
+ * endpoints must remain unauthenticated.
  */
 @Module({
   imports: [
@@ -26,6 +30,7 @@ import { AuthModule } from './common/auth/auth.module.js';
     AuthModule,
     HealthModule,
     ScanModule,
+    EnrichmentModule,
   ],
 })
 export class AppModule {}
