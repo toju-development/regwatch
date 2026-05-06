@@ -2,9 +2,11 @@
  * Unit tests for `getMonthlyUsage` and `canScanThisMonth` (UsageHelper).
  *
  * Spec: `sdd/scanner-vertical-ar/spec` R-5, R-11, INV-SP-3, INV-UT-1.
+ *       `sdd/classifier-and-writer/spec` R-Usage-3, INV-Usage-3.
  * Design: `sdd/scanner-vertical-ar/design` ADR-6.
+ *         `sdd/classifier-and-writer/design` ADR-12.
  *
- * These are boundary-coverage unit tests with a mocked `prisma.scanLog.aggregate`.
+ * These are boundary-coverage unit tests with mocked Prisma aggregates.
  * Real-Postgres integration coverage is provided indirectly by:
  *   - `apps/scanner/src/modules/scan/scan.service.spec.ts` (cap gate behavior)
  *   - the migration applied to the local Postgres (schema shape)
@@ -21,13 +23,25 @@ import {
   startOfMonthUtc,
 } from '../usage.js';
 
-function makePrisma(aggReturn: {
-  _sum: { tokensUsed: number | null; costUsd: Prisma.Decimal | null };
-  _count: { _all: number };
-}) {
-  const aggregate = vi.fn().mockResolvedValue(aggReturn);
-  const prisma = { scanLog: { aggregate } } as unknown as PrismaClient;
-  return { prisma, aggregate };
+function makePrisma(
+  scanReturn: {
+    _sum: { tokensUsed: number | null; costUsd: Prisma.Decimal | null };
+    _count: { _all: number };
+  },
+  enrichmentReturn: { _sum: { costUsd: Prisma.Decimal | null } } = {
+    _sum: { costUsd: null },
+  },
+  settingsReturn: { lastSkippedCapAt: Date | null } | null = null,
+) {
+  const scanAggregate = vi.fn().mockResolvedValue(scanReturn);
+  const enrichmentAggregate = vi.fn().mockResolvedValue(enrichmentReturn);
+  const settingsFindUnique = vi.fn().mockResolvedValue(settingsReturn);
+  const prisma = {
+    scanLog: { aggregate: scanAggregate },
+    enrichmentLog: { aggregate: enrichmentAggregate },
+    settings: { findUnique: settingsFindUnique },
+  } as unknown as PrismaClient;
+  return { prisma, aggregate: scanAggregate, enrichmentAggregate, settingsFindUnique };
 }
 
 const NOW = new Date('2026-04-15T12:34:56Z');
@@ -154,6 +168,98 @@ describe('getMonthlyUsage', () => {
     // be the first of THIS month at 00:00:00 UTC.
     const expected = startOfMonthUtc(new Date());
     expect((args.where.startedAt.gte as Date).toISOString()).toBe(expected.toISOString());
+  });
+
+  it('B5.4 R-Usage-LastSkipped: lastSkippedCapAt is returned from Settings row', async () => {
+    const skipDate = new Date('2026-04-10T08:00:00.000Z');
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: 0, costUsd: null }, _count: { _all: 0 } },
+      { _sum: { costUsd: null } },
+      { lastSkippedCapAt: skipDate },
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+    expect(usage.lastSkippedCapAt).toEqual(skipDate);
+  });
+
+  it('B5.4: lastSkippedCapAt is null when Settings row does not exist', async () => {
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: 0, costUsd: null }, _count: { _all: 0 } },
+      { _sum: { costUsd: null } },
+      null, // no Settings row
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+    expect(usage.lastSkippedCapAt).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B1.5 — R-Usage-3: enrichment cost included in combined cap gate
+// ---------------------------------------------------------------------------
+describe('getMonthlyUsage — enrichment cost tracking (R-Usage-3, INV-Usage-3)', () => {
+  it('(a) ScanLog only: enrichmentCostUsd is Decimal(0), costUsd = scanCostUsd', async () => {
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: 500, costUsd: new Prisma.Decimal('3.00') }, _count: { _all: 2 } },
+      { _sum: { costUsd: null } }, // no enrichment rows
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+
+    expect(usage.scanCostUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.scanCostUsd.equals(new Prisma.Decimal('3.00'))).toBe(true);
+    expect(usage.enrichmentCostUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.enrichmentCostUsd.equals(0)).toBe(true);
+    expect(usage.costUsd.equals(new Prisma.Decimal('3.00'))).toBe(true);
+    expect(usage.isAtCap).toBe(false);
+  });
+
+  it('(b) EnrichmentLog only: scanCostUsd is Decimal(0), costUsd = enrichmentCostUsd', async () => {
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: null, costUsd: null }, _count: { _all: 0 } },
+      { _sum: { costUsd: new Prisma.Decimal('2.50') } },
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+
+    expect(usage.scanCostUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.scanCostUsd.equals(0)).toBe(true);
+    expect(usage.enrichmentCostUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.enrichmentCostUsd.equals(new Prisma.Decimal('2.50'))).toBe(true);
+    expect(usage.costUsd.equals(new Prisma.Decimal('2.50'))).toBe(true);
+  });
+
+  it('(c) Both: costUsd = scanCostUsd + enrichmentCostUsd (no double-counting, INV-Usage-3)', async () => {
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: 1000, costUsd: new Prisma.Decimal('4.00') }, _count: { _all: 5 } },
+      { _sum: { costUsd: new Prisma.Decimal('7.00') } },
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+
+    expect(usage.scanCostUsd.equals(new Prisma.Decimal('4.00'))).toBe(true);
+    expect(usage.enrichmentCostUsd.equals(new Prisma.Decimal('7.00'))).toBe(true);
+    // Combined = $11 → over the $10 cap
+    expect(usage.costUsd.equals(new Prisma.Decimal('11.00'))).toBe(true);
+    expect(usage.isAtCap).toBe(true);
+    expect(usage.percent).toBe(110);
+  });
+
+  it('(d) Neither: all Decimal fields are Decimal(0), isAtCap = false', async () => {
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: null, costUsd: null }, _count: { _all: 0 } },
+      { _sum: { costUsd: null } },
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+
+    expect(usage.scanCostUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.enrichmentCostUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.costUsd).toBeInstanceOf(Prisma.Decimal);
+    expect(usage.scanCostUsd.equals(0)).toBe(true);
+    expect(usage.enrichmentCostUsd.equals(0)).toBe(true);
+    expect(usage.costUsd.equals(0)).toBe(true);
+    expect(usage.isAtCap).toBe(false);
   });
 });
 

@@ -71,3 +71,38 @@ export const SettingsUpdatedEventSchema = z.object({
 });
 
 export type SettingsUpdatedEvent = z.infer<typeof SettingsUpdatedEventSchema>;
+
+// ─── Enrichment: enrichment.completed ────────────────────────────────────────
+
+/**
+ * Canonical event name emitted POST-enrichment by `EnrichmentListener`.
+ *
+ * Spec: `sdd/classifier-and-writer/spec` R-9-Enrichment-Completed-Event.
+ * Design: `sdd/classifier-and-writer/design` ADR-8 (payload shape).
+ *
+ * Emitted exactly once per `scan.completed` consumed. Payload carries outcome
+ * counts so consumers can act without re-querying `Alert` rows.
+ */
+export const ENRICHMENT_COMPLETED_EVENT = 'enrichment.completed' as const;
+
+export const EnrichmentCompletedEventSchema = z.object({
+  scanLogId: z.string().min(1),
+  organizationId: z.string().min(1),
+  /** Jurisdiction code, e.g. `'AR'`. Forwarded from the triggering ScanCompletedEvent. */
+  jurisdiction: z.string().min(1),
+  /** Alert IDs processed in this batch (all, regardless of outcome). */
+  alertIds: z.array(z.string()),
+  /** Per-outcome counts for the batch. */
+  counts: z.object({
+    completed: z.number().int().nonnegative(),
+    classifyFailed: z.number().int().nonnegative(),
+    writeFailed: z.number().int().nonnegative(),
+    skippedCap: z.number().int().nonnegative(),
+    skippedIrrelevant: z.number().int().nonnegative(),
+  }),
+  /** Combined enrichment cost for the batch (Prisma.Decimal serialized as string). */
+  totalCostUsd: z.string(),
+  completedAt: z.iso.datetime(),
+});
+
+export type EnrichmentCompletedEvent = z.infer<typeof EnrichmentCompletedEventSchema>;

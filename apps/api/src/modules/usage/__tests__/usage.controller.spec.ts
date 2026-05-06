@@ -44,11 +44,14 @@ function makeUsage(overrides: Partial<MonthlyUsage> = {}): MonthlyUsage {
   return {
     tokensUsed: 12_345,
     costUsd: new Prisma.Decimal('1.234567'),
+    scanCostUsd: new Prisma.Decimal('1.234567'),
+    enrichmentCostUsd: new Prisma.Decimal('0'),
     scansCount: 3,
     capUsd: new Prisma.Decimal('10'),
     isAtCap: false,
     percent: 12,
     monthStart: FIXED_MONTH_START,
+    lastSkippedCapAt: null,
     ...overrides,
   };
 }
@@ -112,6 +115,7 @@ describe('UsageController', () => {
           capUsd: '10',
           percent: 12,
           monthStart: FIXED_MONTH_START.toISOString(),
+          lastSkippedCapAt: null,
         },
         isAtCap: false,
       });

@@ -25,11 +25,18 @@ enum AlertSource {
   CNV_RESOLUCIONES_GENERALES
 }
 
+// MVP-6 migration #9 (sdd/classifier-and-writer spec P1, B1.3):
+// Reshaped from 4-bucket (UNKNOWN/INFO/MEDIUM/HIGH) to 5-bucket.
+// INFO dropped; LOW added for low-impact findings; CRITICAL added for
+// systemic/sanctions-level findings. Alert table was empty before apply.
+// Classifier emits LOW|MEDIUM|HIGH|CRITICAL on success; UNKNOWN is
+// failure-only (enrichmentStatus=CLASSIFY_FAILED path).
 enum Severity {
   UNKNOWN
-  INFO
+  LOW
   MEDIUM
   HIGH
+  CRITICAL
 }
 
 enum ScanStatus {
@@ -42,18 +49,66 @@ enum ScanStatus {
   SKIPPED_CAP_EXCEEDED
 }
 
+// ─── Enrichment domain enums (sdd/classifier-and-writer — MVP-6, migration #9) ─
+
+// 20-value regulatory taxonomy (proposal D2). Values are SCREAMING_SNAKE_CASE,
+// English. Derived dynamically from Prisma at runtime and injected as a prompt
+// PARAMETER — NEVER hardcoded in prompt text (ADR-4, INV-AE-4, defuses #798).
+// OTHER is the safety net when no topic clearly fits.
+// Taxonomy is append-only; new values require a migration (acceptable — topics
+// are governance-controlled, not user-input). MVP-13 may migrate to a table.
+enum AlertTopic {
+  FX
+  AML
+  KYC_ONBOARDING
+  CAPITAL_REQUIREMENTS
+  OPERATIONAL_RISK
+  CYBERSECURITY
+  REPORTING
+  CAPITAL_MARKETS
+  E_MONEY
+  ACQUIRING
+  REMITTANCES
+  BILL_PAYMENTS
+  QR_PAYMENTS
+  VIRTUAL_ASSETS
+  LENDING_CREDIT
+  OPEN_FINANCE
+  CONSUMER_PROTECTION
+  INSURANCE
+  DATA_PROTECTION
+  OTHER
+}
+
+// Per-alert enrichment pipeline state machine (R-8).
+// Terminal success: COMPLETED. Terminal failure: CLASSIFY_FAILED, WRITE_FAILED,
+// SKIPPED_CAP_EXCEEDED, SKIPPED_IRRELEVANT.
+// Idempotency rule (ADR-9): re-run on {PENDING, CLASSIFY_FAILED, WRITE_FAILED,
+// SKIPPED_CAP_EXCEEDED}; skip on {CLASSIFIED, WRITTEN, COMPLETED, SKIPPED_IRRELEVANT}.
+enum EnrichmentStatus {
+  PENDING
+  CLASSIFIED
+  WRITTEN
+  COMPLETED
+  CLASSIFY_FAILED
+  WRITE_FAILED
+  SKIPPED_CAP_EXCEEDED
+  SKIPPED_IRRELEVANT
+}
+
 model Organization {
-  id             String       @id @default(cuid())
-  slug           String       @unique @db.VarChar(64)
-  name           String       @db.VarChar(120)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id             String          @id @default(cuid())
+  slug           String          @unique @db.VarChar(64)
+  name           String          @db.VarChar(120)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   memberships    Membership[]
   invitations    Invitation[]
-  personalOfUser User?        @relation("PersonalOrg")
+  personalOfUser User?           @relation("PersonalOrg")
   settings       Settings?
   alerts         Alert[]
   scanLogs       ScanLog[]
+  enrichmentLogs EnrichmentLog[]
 }
 
 model User {
@@ -162,6 +217,16 @@ model Settings {
   scanDay       String @default("mon")
   scanHour      Int    @default(8)
 
+  // MVP-6 (migration #9): nullable output-language override for Writer.
+  // Accepts 'es' | 'en' | 'pt' | null (null = use jurisdiction default).
+  // Zod-validated on PUT by SettingsService. R-Settings-OutputLanguage.
+  outputLanguage String?
+
+  // MVP-6 (migration #10): last time an alert was skipped due to cap exceeded.
+  // Set by EnrichmentService.persistCapExceeded (R-5, R-Usage-LastSkipped).
+  // Null until the first cap-skip event occurs.
+  lastSkippedCapAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -187,7 +252,7 @@ model Alert {
   title         String      @db.VarChar(500)
   /// Optional — populated by LLM finding; nullable for forward-compat.
   summary       String?     @db.Text
-  /// Populated by future fetch step (MVP-6/8). Null in MVP-5.
+  /// Populated by future fetch step (MVP-8). Null in MVP-5/6.
   fullContent   String?     @db.Text
   publishedAt   DateTime?
   detectedAt    DateTime    @default(now())
@@ -198,11 +263,39 @@ model Alert {
   scanLogId String?
   scanLog   ScanLog? @relation(fields: [scanLogId], references: [id], onDelete: SetNull)
 
+  // ── MVP-6 enrichment columns (migration #9, R-AlertEnrichment-Schema) ──
+  // All nullable — pre-existing rows keep null, enrichmentStatus=PENDING.
+  // Sole writer: EnrichmentService.enrichAlertsForScan (INV-AE-1).
+
+  /// Regulatory topic bucket. Null until Classifier runs.
+  topic             AlertTopic?
+  /// Classifier relevance score 0-100 (Int, ADR-2 / spec P2). Null until classified.
+  relevanceScore    Int?             @default(0)
+  /// true = relevant for this org (Writer will run). false = SKIPPED_IRRELEVANT.
+  relevant          Boolean          @default(true)
+  /// Timestamp when Classifier completed successfully.
+  classifiedAt      DateTime?
+  /// Writer output — human-readable summary for compliance team.
+  executiveSummary  String?          @db.Text
+  /// Writer output — actionable items for this org.
+  whatChangesForYou String?          @db.Text
+  /// Writer output — verbatim citation strings from Alert.summary.
+  citations         Json?
+  /// Timestamp when Writer completed successfully.
+  writtenAt         DateTime?
+  /// Current enrichment pipeline state (R-8, ADR-9).
+  enrichmentStatus  EnrichmentStatus @default(PENDING)
+  /// Error detail when enrichmentStatus ∈ {CLASSIFY_FAILED, WRITE_FAILED}.
+  enrichmentError   String?          @db.Text
+
+  enrichmentLogs EnrichmentLog[]
+
   createdAt DateTime @default(now())
 
   @@unique([organizationId, sourceUrlHash])
   @@index([organizationId, detectedAt])
   @@index([organizationId, source])
+  @@index([organizationId, enrichmentStatus])
 }
 
 // One row per scan attempt (cron tick or manual trigger). `costUsd` precision
@@ -220,11 +313,11 @@ model ScanLog {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   /// Jurisdiction code, e.g. `'AR'`. String for forward-compat (MVP-13).
-  jurisdiction String      @db.VarChar(8)
+  jurisdiction String     @db.VarChar(8)
   /// Optional source URL when the scan was scoped to a single feed.
-  sourceUrl    String?     @db.VarChar(2048)
+  sourceUrl    String?    @db.VarChar(2048)
   status       ScanStatus
-  errorMsg     String?     @db.Text
+  errorMsg     String?    @db.Text
 
   /// Sum of input + output tokens (denormalized for fast SUM aggregation).
   tokensUsed Int     @default(0)
@@ -242,4 +335,34 @@ model ScanLog {
 
   @@index([organizationId, startedAt])
   @@index([organizationId, status])
+}
+
+// ─── Enrichment domain (sdd/classifier-and-writer — MVP-6, migration #9) ───
+//
+// One row per agent invocation attempt (classifier OR writer) per Alert.
+// Sole writer: EnrichmentService (in apps/scanner).
+// costUsd Decimal(10,6) — same precision rationale as ScanLog.costUsd.
+// Index (organizationId, createdAt) powers getMonthlyUsage enrichment sum (R-Usage-3).
+// Index (alertId) powers per-alert log queries.
+model EnrichmentLog {
+  id             String           @id @default(cuid())
+  organizationId String
+  alertId        String
+  /// Which agent produced this log: 'classifier' | 'writer'.
+  agent          String           @db.VarChar(20)
+  tokensInput    Int              @default(0)
+  tokensOutput   Int              @default(0)
+  /// USD cost for this invocation. 0 for skipped/failed-before-call rows.
+  costUsd        Decimal          @default(0) @db.Decimal(10, 6)
+  status         EnrichmentStatus
+  errorMsg       String?          @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  alert        Alert        @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([alertId])
 }

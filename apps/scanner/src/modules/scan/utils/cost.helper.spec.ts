@@ -15,7 +15,14 @@
 import { Prisma } from '@regwatch/db/client';
 import { describe, expect, it } from 'vitest';
 
-import { computeCostFromUsageMetadata } from './cost.helper.js';
+import {
+  CLASSIFIER_INPUT_COST_PER_TOKEN,
+  CLASSIFIER_OUTPUT_COST_PER_TOKEN,
+  WRITER_INPUT_COST_PER_TOKEN,
+  WRITER_OUTPUT_COST_PER_TOKEN,
+  computeCostFromUsageMetadata,
+  estimateEnrichmentCost,
+} from './cost.helper.js';
 
 describe('computeCostFromUsageMetadata', () => {
   it('returns 0/0 for empty usageMetadata (R-6 zero-token boundary)', () => {
@@ -107,5 +114,63 @@ describe('computeCostFromUsageMetadata', () => {
     });
     expect(result.tokensUsed).toBe(0);
     expect(result.costUsd.equals(0)).toBe(true);
+  });
+});
+
+// ─── Enrichment pricing constants (MVP-6, ADR-12/ADR-13) ─────────────────────
+
+describe('enrichment pricing constants', () => {
+  it('CLASSIFIER_INPUT_COST_PER_TOKEN is a Prisma.Decimal', () => {
+    expect(CLASSIFIER_INPUT_COST_PER_TOKEN).toBeInstanceOf(Prisma.Decimal);
+  });
+
+  it('CLASSIFIER_OUTPUT_COST_PER_TOKEN is a Prisma.Decimal', () => {
+    expect(CLASSIFIER_OUTPUT_COST_PER_TOKEN).toBeInstanceOf(Prisma.Decimal);
+  });
+
+  it('WRITER constants equal CLASSIFIER constants (same model, ADR-12)', () => {
+    expect(WRITER_INPUT_COST_PER_TOKEN.equals(CLASSIFIER_INPUT_COST_PER_TOKEN)).toBe(true);
+    expect(WRITER_OUTPUT_COST_PER_TOKEN.equals(CLASSIFIER_OUTPUT_COST_PER_TOKEN)).toBe(true);
+  });
+
+  it('per-token input rate = 0.30 / 1,000,000 = 3e-7', () => {
+    // $0.30 per 1M tokens = $3e-7 per token
+    expect(CLASSIFIER_INPUT_COST_PER_TOKEN.equals(new Prisma.Decimal('3e-7'))).toBe(true);
+  });
+
+  it('per-token output rate = 2.50 / 1,000,000 = 2.5e-6', () => {
+    // $2.50 per 1M tokens = $2.5e-6 per token
+    expect(CLASSIFIER_OUTPUT_COST_PER_TOKEN.equals(new Prisma.Decimal('2.5e-6'))).toBe(true);
+  });
+});
+
+// ─── estimateEnrichmentCost ───────────────────────────────────────────────────
+
+describe('estimateEnrichmentCost', () => {
+  it('classifier: 3000 in + 2000 out = same as computeCostFromUsageMetadata', () => {
+    const via_helper = estimateEnrichmentCost(3000, 2000, 'classifier');
+    const via_compute = computeCostFromUsageMetadata({
+      promptTokenCount: 3000,
+      candidatesTokenCount: 2000,
+    });
+    expect(via_helper.costUsd.equals(via_compute.costUsd)).toBe(true);
+    expect(via_helper.tokensUsed).toBe(via_compute.tokensUsed);
+  });
+
+  it('writer: 5000 in + 1000 out = same cost as classifier with same tokens (ADR-12)', () => {
+    const classifier = estimateEnrichmentCost(5000, 1000, 'classifier');
+    const writer = estimateEnrichmentCost(5000, 1000, 'writer');
+    expect(classifier.costUsd.equals(writer.costUsd)).toBe(true);
+  });
+
+  it('returns Prisma.Decimal for costUsd (INV-SP-3)', () => {
+    const result = estimateEnrichmentCost(1000, 500, 'classifier');
+    expect(result.costUsd).toBeInstanceOf(Prisma.Decimal);
+  });
+
+  it('zero tokens → zero cost', () => {
+    const result = estimateEnrichmentCost(0, 0, 'writer');
+    expect(result.costUsd.equals(0)).toBe(true);
+    expect(result.tokensUsed).toBe(0);
   });
 });

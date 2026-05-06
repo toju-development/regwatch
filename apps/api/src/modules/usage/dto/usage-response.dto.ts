@@ -41,6 +41,11 @@ export interface UsageDto {
   percent: number;
   /** ISO-8601 of the lower bound used by the aggregation (audit / debug). */
   monthStart: string;
+  /**
+   * ISO-8601 timestamp of the last cap-skip event, or `null` if cap never hit.
+   * MVP-6 B5.4 (R-Usage-LastSkipped).
+   */
+  lastSkippedCapAt: string | null;
 }
 
 /**
@@ -75,6 +80,7 @@ export function toUsageDto(usage: MonthlyUsage): UsageDto {
     capUsd: usage.capUsd.toString(),
     percent: Math.min(100, Math.max(0, usage.percent)),
     monthStart: usage.monthStart.toISOString(),
+    lastSkippedCapAt: usage.lastSkippedCapAt ? usage.lastSkippedCapAt.toISOString() : null,
   };
 }
 

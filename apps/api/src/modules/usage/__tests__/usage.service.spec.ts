@@ -32,11 +32,14 @@ function makeUsage(overrides: Partial<MonthlyUsage> = {}): MonthlyUsage {
   return {
     tokensUsed: 1234,
     costUsd: new Prisma.Decimal('0.123456'),
+    scanCostUsd: new Prisma.Decimal('0.123456'),
+    enrichmentCostUsd: new Prisma.Decimal('0'),
     scansCount: 3,
     capUsd: new Prisma.Decimal('10'),
     isAtCap: false,
     percent: 1,
     monthStart: new Date('2026-04-01T00:00:00.000Z'),
+    lastSkippedCapAt: null,
     ...overrides,
   };
 }

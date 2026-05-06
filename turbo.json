@@ -20,7 +20,8 @@
     },
     "test": {
       "dependsOn": ["^build", "@regwatch/db#db:generate"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "passThroughEnv": ["DATABASE_URL"]
     },
     "test:e2e": {
       "dependsOn": ["build"],
