@@ -23,6 +23,8 @@ enum AlertSource {
   BCRA_COMUNICADOS_B
   BCRA_COMUNICADOS_C
   CNV_RESOLUCIONES_GENERALES
+  /// MVP-7 manual ingestion (migration #11, sdd/manual-ingestion R-SCHEMA-1)
+  MANUAL
 }
 
 // MVP-6 migration #9 (sdd/classifier-and-writer spec P1, B1.3):
@@ -259,6 +261,10 @@ model Alert {
   severity      Severity    @default(UNKNOWN)
   /// Populated by MVP-6 classifier. Null in MVP-5.
   regulationId  String?
+
+  /// MVP-7: jurisdiction for manual alerts (migration #11, ADR-5). Null for scanner alerts
+  /// (those resolve via scanLog.jurisdiction). Required at creation for MANUAL source.
+  jurisdiction String? @db.VarChar(8)
 
   scanLogId String?
   scanLog   ScanLog? @relation(fields: [scanLogId], references: [id], onDelete: SetNull)
