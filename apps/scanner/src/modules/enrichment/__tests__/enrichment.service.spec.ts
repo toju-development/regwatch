@@ -381,6 +381,8 @@ describe('EnrichmentService.enrichAlert', () => {
   });
 
   describe('idempotency (ADR-9)', () => {
+    // ── Skip states (terminal, intentional) ──────────────────────────────────
+
     it('COMPLETED alert → early return, no DB writes beyond initial read', async () => {
       const prisma = makePrisma({ enrichmentStatus: 'COMPLETED' });
       const svc = makeService(
@@ -408,6 +410,96 @@ describe('EnrichmentService.enrichAlert', () => {
       await svc.enrichAlert(ALERT_ID, ORG_ID);
 
       expect(prisma._mocks.alertUpdate).not.toHaveBeenCalled();
+    });
+
+    // ── Retry states (retryable terminal / stuck mid-state) ──────────────────
+
+    it('CLASSIFY_FAILED alert → retries full flow (Classifier + Writer if relevant)', async () => {
+      // CLASSIFY_FAILED is retryable (ADR-9): failure may be transient.
+      const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
+      const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
+      const prisma = makePrisma({ enrichmentStatus: 'CLASSIFY_FAILED' });
+      const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      // Classifier ran (at least one alertUpdate with enrichmentStatus transition)
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalled();
+      // Writer ran (COMPLETED terminal state)
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
+    });
+
+    it('WRITE_FAILED alert → retries full flow (re-runs both agents — simpler than mid-resume)', async () => {
+      // WRITE_FAILED is retryable (ADR-9): re-runs full pipeline from Classifier.
+      const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
+      const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
+      const prisma = makePrisma({ enrichmentStatus: 'WRITE_FAILED' });
+      const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalled();
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
+    });
+
+    it('SKIPPED_CAP_EXCEEDED alert → retries (cap may have reset — re-checks budget)', async () => {
+      // Cap may have reset since the last run. Re-check → proceed if within budget.
+      const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
+      const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
+      const prisma = makePrisma({ enrichmentStatus: 'SKIPPED_CAP_EXCEEDED' });
+      const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      // Cap not exceeded this time → full flow runs → COMPLETED
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalled();
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
+    });
+
+    it('PENDING alert → full flow (normal happy-path idempotency check)', async () => {
+      // PENDING is the normal entry state — always runs full flow.
+      const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
+      const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
+      const prisma = makePrisma({ enrichmentStatus: 'PENDING' });
+      const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalled();
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
+    });
+
+    it('CLASSIFYING alert → treated as PENDING (stuck mid-state from crash → retry)', async () => {
+      // CLASSIFYING mid-state from a crash: treat as PENDING, re-run from start.
+      const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
+      const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
+      const prisma = makePrisma({ enrichmentStatus: 'CLASSIFYING' });
+      const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      // Classifier ran and flow completed
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalled();
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
+    });
+
+    it('WRITING alert → treated as PENDING (stuck mid-state from crash → retry)', async () => {
+      // WRITING mid-state from a crash: treat as PENDING, re-run from start.
+      const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
+      const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
+      const prisma = makePrisma({ enrichmentStatus: 'WRITING' });
+      const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalled();
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
     });
   });
 
