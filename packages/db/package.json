@@ -23,6 +23,10 @@
     "./usage": {
       "types": "./src/usage.ts",
       "default": "./src/usage.ts"
+    },
+    "./dedup": {
+      "types": "./src/dedup.ts",
+      "default": "./src/dedup.ts"
     }
   },
   "scripts": {

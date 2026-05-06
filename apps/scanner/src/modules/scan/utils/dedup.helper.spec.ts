@@ -16,12 +16,12 @@ describe('normalizeUrl', () => {
     expect(normalizeUrl('https://x.com/a#section')).toBe('https://x.com/a');
   });
 
-  it('drops the query string entirely', () => {
-    expect(normalizeUrl('https://x.com/a?b=1&c=2')).toBe('https://x.com/a');
+  it('preserves sorted query params (does not drop query string)', () => {
+    expect(normalizeUrl('https://x.com/a?b=1&c=2')).toBe('https://x.com/a?b=1&c=2');
   });
 
-  it('strips trailing slashes from pathname', () => {
-    expect(normalizeUrl('https://x.com/a///')).toBe('https://x.com/a');
+  it('strips a single trailing slash from pathname', () => {
+    expect(normalizeUrl('https://x.com/a/')).toBe('https://x.com/a');
   });
 
   it('preserves a single root slash', () => {
@@ -43,9 +43,10 @@ describe('computeSourceUrlHash', () => {
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it('is stable across normalization-equivalent URLs', () => {
-    const a = computeSourceUrlHash('https://www.bcra.gob.ar/foo/');
-    const b = computeSourceUrlHash('https://WWW.BCRA.GOB.AR/foo?utm=1#x');
+  it('is stable across normalization-equivalent URLs when using normalizeUrl', () => {
+    // computeSourceUrlHash accepts raw input; for URL-based dedup call normalizeUrl first
+    const a = computeSourceUrlHash(normalizeUrl('https://www.bcra.gob.ar/foo/'));
+    const b = computeSourceUrlHash(normalizeUrl('https://WWW.BCRA.GOB.AR/foo#x'));
     expect(a).toBe(b);
   });
 

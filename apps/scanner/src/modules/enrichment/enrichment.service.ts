@@ -91,6 +91,7 @@ export class EnrichmentService {
         summary: true,
         source: true,
         enrichmentStatus: true,
+        jurisdiction: true,
         scanLog: { select: { jurisdiction: true } },
       },
     });
@@ -109,7 +110,8 @@ export class EnrichmentService {
     }
 
     // ── Resolve language (R-4) ─────────────────────────────────────────────
-    const jurisdiction = alert.scanLog?.jurisdiction ?? 'AR';
+    // B2.2 (CF-MVP7): prefer alert.jurisdiction (set by manual ingest) over scanLog fallback
+    const jurisdiction = alert.jurisdiction ?? alert.scanLog?.jurisdiction ?? 'AR';
     const settings = await this.prisma.settings.findUnique({
       where: { organizationId },
       select: { outputLanguage: true },
@@ -192,6 +194,12 @@ export class EnrichmentService {
 
       // ── 7. Run Writer ───────────────────────────────────────────────────
       try {
+        // CF-MVP7-1: set WRITTEN transit state immediately before runWriter (R-8)
+        await this.prisma.alert.update({
+          where: { id: alertId },
+          data: { enrichmentStatus: 'WRITTEN' },
+        });
+
         const writerAgent = this.writerFactory({});
         const {
           output: writerOutput,

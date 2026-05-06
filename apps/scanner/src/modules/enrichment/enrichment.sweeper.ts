@@ -2,7 +2,7 @@
  * `EnrichmentSweeper` — startup recovery for stuck Alert enrichment jobs.
  *
  * On `apps/scanner` boot, finds Alert rows whose `enrichmentStatus` is a
- * non-terminal in-progress state (PENDING, CLASSIFIED) AND whose
+ * non-terminal in-progress state (PENDING, CLASSIFIED, WRITTEN) AND whose
  * `createdAt` is more than 10 minutes old. For each, it re-triggers
  * `EnrichmentService.enrichAlert` so that transient failures (e.g. crashes
  * mid-pipeline) are recovered automatically on the next restart.
@@ -30,7 +30,7 @@ import { ENRICHMENT_SERVICE } from './tokens.js';
 import type { EnrichmentService } from './enrichment.service.js';
 
 /** Non-terminal enrichment statuses that indicate a stuck job. */
-const STUCK_STATUSES = ['PENDING', 'CLASSIFIED'] as const;
+const STUCK_STATUSES = ['PENDING', 'CLASSIFIED', 'WRITTEN'] as const;
 
 /** Alerts older than this threshold (ms) are considered stuck. */
 const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
