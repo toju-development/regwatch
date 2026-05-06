@@ -75,7 +75,7 @@ export class EnrichmentListener {
     // Filter: only PENDING alerts from this scan, so any pre-existing COMPLETED
     // alerts are not re-processed (idempotency handled in EnrichmentService too).
     const scanAlerts = await this.prisma.alert.findMany({
-      where: { scanLogId, organizationId },
+      where: { scanLogId, organizationId, enrichmentStatus: 'PENDING' },
       select: { id: true },
     });
     const alertIds = scanAlerts.map((a) => a.id);

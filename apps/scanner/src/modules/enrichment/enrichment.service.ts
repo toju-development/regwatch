@@ -83,9 +83,10 @@ export class EnrichmentService {
     // ── 1. Load Alert row ──────────────────────────────────────────────────
     // Include scanLog to get jurisdiction for language resolution (R-4).
     const alert = await this.prisma.alert.findUnique({
-      where: { id: alertId },
+      where: { id: alertId, organizationId },
       select: {
         id: true,
+        organizationId: true,
         title: true,
         summary: true,
         source: true,

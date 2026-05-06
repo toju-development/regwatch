@@ -473,11 +473,12 @@ describe('EnrichmentService.enrichAlert', () => {
       expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
     });
 
-    it('CLASSIFYING alert → treated as PENDING (stuck mid-state from crash → retry)', async () => {
-      // CLASSIFYING mid-state from a crash: treat as PENDING, re-run from start.
+    it('CLASSIFIED alert → re-runs writer phase (stuck after classifier, before writer → retry)', async () => {
+      // CLASSIFIED mid-state from a crash: classifier ran but writer never completed.
+      // Re-run from the start (simpler than mid-resume per ADR-9).
       const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
       const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
-      const prisma = makePrisma({ enrichmentStatus: 'CLASSIFYING' });
+      const prisma = makePrisma({ enrichmentStatus: 'CLASSIFIED' });
       const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
 
       await svc.enrichAlert(ALERT_ID, ORG_ID);
@@ -488,11 +489,11 @@ describe('EnrichmentService.enrichAlert', () => {
       expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
     });
 
-    it('WRITING alert → treated as PENDING (stuck mid-state from crash → retry)', async () => {
-      // WRITING mid-state from a crash: treat as PENDING, re-run from start.
+    it('WRITE_FAILED alert (second crash) → retries full flow again', async () => {
+      // A second crash after WRITE_FAILED is set: re-run from start again.
       const classifierAgent = makeClassifierFactory(VALID_CLASSIFIER_JSON);
       const writerAgent = makeWriterFactory(VALID_WRITER_JSON);
-      const prisma = makePrisma({ enrichmentStatus: 'WRITING' });
+      const prisma = makePrisma({ enrichmentStatus: 'WRITE_FAILED' });
       const svc = makeService(prisma, classifierAgent, writerAgent, makeUsageHelper(false));
 
       await svc.enrichAlert(ALERT_ID, ORG_ID);
