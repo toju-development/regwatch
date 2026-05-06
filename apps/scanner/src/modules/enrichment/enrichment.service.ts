@@ -281,10 +281,8 @@ export class EnrichmentService {
   /**
    * Shared helper: cap-exceeded path for either agent.
    * Sets `enrichmentStatus = SKIPPED_CAP_EXCEEDED` on Alert and writes a
-   * zero-cost `EnrichmentLog` row. Does NOT throw.
-   *
-   * B5.4 NOTE: will also set `Settings.lastSkippedCapAt = new Date()` once
-   * migration #10 adds the column. Logic stub lives here — column added in B5.4.
+   * zero-cost `EnrichmentLog` row. Also stamps `Settings.lastSkippedCapAt`
+   * (migration #10) so the usage widget can surface the last skip time.
    */
   private async persistCapExceeded(
     alertId: string,
@@ -304,6 +302,16 @@ export class EnrichmentService {
         tokensOutput: 0,
         costUsd: new Prisma.Decimal(0),
         status: 'SKIPPED_CAP_EXCEEDED',
+      },
+    });
+    // MVP-6 B5.4: stamp lastSkippedCapAt on Settings (upsert in case row not yet created).
+    await this.prisma.settings.upsert({
+      where: { organizationId },
+      update: { lastSkippedCapAt: new Date() },
+      create: {
+        organizationId,
+        jurisdictions: [],
+        lastSkippedCapAt: new Date(),
       },
     });
   }

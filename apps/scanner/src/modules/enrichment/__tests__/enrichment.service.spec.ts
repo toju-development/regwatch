@@ -114,12 +114,19 @@ function makePrisma(alertOverrides: Partial<AlertRow> = {}) {
   const alertUpdate = vi.fn().mockResolvedValue({});
   const enrichmentLogCreate = vi.fn().mockResolvedValue({ id: 'log-001' });
   const settingsFindUnique = vi.fn().mockResolvedValue({ outputLanguage: null });
+  const settingsUpsert = vi.fn().mockResolvedValue({});
 
   return {
     alert: { findUnique: alertFindUnique, update: alertUpdate },
     enrichmentLog: { create: enrichmentLogCreate },
-    settings: { findUnique: settingsFindUnique },
-    _mocks: { alertFindUnique, alertUpdate, enrichmentLogCreate, settingsFindUnique },
+    settings: { findUnique: settingsFindUnique, upsert: settingsUpsert },
+    _mocks: {
+      alertFindUnique,
+      alertUpdate,
+      enrichmentLogCreate,
+      settingsFindUnique,
+      settingsUpsert,
+    },
   };
 }
 

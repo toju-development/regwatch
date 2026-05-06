@@ -222,6 +222,11 @@ model Settings {
   // Zod-validated on PUT by SettingsService. R-Settings-OutputLanguage.
   outputLanguage String?
 
+  // MVP-6 (migration #10): last time an alert was skipped due to cap exceeded.
+  // Set by EnrichmentService.persistCapExceeded (R-5, R-Usage-LastSkipped).
+  // Null until the first cap-skip event occurs.
+  lastSkippedCapAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

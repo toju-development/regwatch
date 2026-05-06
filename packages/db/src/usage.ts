@@ -73,6 +73,12 @@ export interface MonthlyUsage {
   percent: number;
   /** Lower bound used by the aggregation (debug / audit). */
   monthStart: Date;
+  /**
+   * Timestamp of the last time an alert was skipped due to cap exceeded.
+   * Sourced from `Settings.lastSkippedCapAt`. Null if cap was never hit.
+   * MVP-6 B5.4 (R-Usage-LastSkipped).
+   */
+  lastSkippedCapAt: Date | null;
 }
 
 /**
@@ -112,7 +118,7 @@ export async function getMonthlyUsage(
   const monthStart = startOfMonthUtc(now);
 
   // Two parallel aggregations — one round-trip each, both indexed.
-  const [scanAgg, enrichmentAgg] = await Promise.all([
+  const [scanAgg, enrichmentAgg, settings] = await Promise.all([
     prisma.scanLog.aggregate({
       where: {
         organizationId,
@@ -127,6 +133,10 @@ export async function getMonthlyUsage(
         createdAt: { gte: monthStart },
       },
       _sum: { costUsd: true },
+    }),
+    prisma.settings.findUnique({
+      where: { organizationId },
+      select: { lastSkippedCapAt: true },
     }),
   ]);
 
@@ -156,6 +166,7 @@ export async function getMonthlyUsage(
     isAtCap,
     percent,
     monthStart,
+    lastSkippedCapAt: settings?.lastSkippedCapAt ?? null,
   };
 }
 

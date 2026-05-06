@@ -49,6 +49,7 @@ function makeUsage(overrides: Partial<MonthlyUsage> = {}): MonthlyUsage {
     isAtCap: false,
     percent: 12,
     monthStart: FIXED_MONTH_START,
+    lastSkippedCapAt: null,
     ...overrides,
   };
 }
@@ -112,6 +113,7 @@ describe('UsageController', () => {
           capUsd: '10',
           percent: 12,
           monthStart: FIXED_MONTH_START.toISOString(),
+          lastSkippedCapAt: null,
         },
         isAtCap: false,
       });

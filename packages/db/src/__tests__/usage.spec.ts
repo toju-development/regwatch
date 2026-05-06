@@ -31,14 +31,17 @@ function makePrisma(
   enrichmentReturn: { _sum: { costUsd: Prisma.Decimal | null } } = {
     _sum: { costUsd: null },
   },
+  settingsReturn: { lastSkippedCapAt: Date | null } | null = null,
 ) {
   const scanAggregate = vi.fn().mockResolvedValue(scanReturn);
   const enrichmentAggregate = vi.fn().mockResolvedValue(enrichmentReturn);
+  const settingsFindUnique = vi.fn().mockResolvedValue(settingsReturn);
   const prisma = {
     scanLog: { aggregate: scanAggregate },
     enrichmentLog: { aggregate: enrichmentAggregate },
+    settings: { findUnique: settingsFindUnique },
   } as unknown as PrismaClient;
-  return { prisma, aggregate: scanAggregate, enrichmentAggregate };
+  return { prisma, aggregate: scanAggregate, enrichmentAggregate, settingsFindUnique };
 }
 
 const NOW = new Date('2026-04-15T12:34:56Z');
@@ -165,6 +168,29 @@ describe('getMonthlyUsage', () => {
     // be the first of THIS month at 00:00:00 UTC.
     const expected = startOfMonthUtc(new Date());
     expect((args.where.startedAt.gte as Date).toISOString()).toBe(expected.toISOString());
+  });
+
+  it('B5.4 R-Usage-LastSkipped: lastSkippedCapAt is returned from Settings row', async () => {
+    const skipDate = new Date('2026-04-10T08:00:00.000Z');
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: 0, costUsd: null }, _count: { _all: 0 } },
+      { _sum: { costUsd: null } },
+      { lastSkippedCapAt: skipDate },
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+    expect(usage.lastSkippedCapAt).toEqual(skipDate);
+  });
+
+  it('B5.4: lastSkippedCapAt is null when Settings row does not exist', async () => {
+    const { prisma } = makePrisma(
+      { _sum: { tokensUsed: 0, costUsd: null }, _count: { _all: 0 } },
+      { _sum: { costUsd: null } },
+      null, // no Settings row
+    );
+
+    const usage = await getMonthlyUsage(prisma, 'org-1', NOW);
+    expect(usage.lastSkippedCapAt).toBeNull();
   });
 });
 
