@@ -20,8 +20,10 @@
     "@regwatch/db": "workspace:*",
     "@regwatch/types": "workspace:*",
     "jose": "^6.2.2",
+    "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "undici": "7",
     "zod": "^4.0.0"
   },
   "devDependencies": {
@@ -30,7 +32,9 @@
     "@nestjs/testing": "^11.0.0",
     "@swc/core": "^1.15.0",
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.1.0",
     "@types/node": "^22.10.0",
+    "@types/pdf-parse": "^1.1.5",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.2",
