@@ -103,7 +103,9 @@ describe('IngestService.ingestUrl', () => {
 
     expect(result.alertId).toBe('alert-123');
     expect(prismaMock.alert.create).toHaveBeenCalledOnce();
-    const createArgs = prismaMock.alert.create.mock.calls[0]?.[0];
+    const createArgs = (
+      prismaMock.alert.create.mock.calls as { data: Record<string, unknown> }[][]
+    )[0]?.[0];
     expect(createArgs?.data.source).toBe('MANUAL');
     expect(createArgs?.data.organizationId).toBe('org-1');
     expect(createArgs?.data.jurisdiction).toBe('AR');
@@ -177,7 +179,9 @@ describe('IngestService.ingestText', () => {
     );
 
     expect(result.alertId).toBe('alert-123');
-    const createArgs = prismaMock.alert.create.mock.calls[0]?.[0];
+    const createArgs = (
+      prismaMock.alert.create.mock.calls as { data: Record<string, unknown> }[][]
+    )[0]?.[0];
     expect(createArgs?.data.source).toBe('MANUAL');
     expect(createArgs?.data.jurisdiction).toBe('CL');
     expect(createArgs?.data.sourceUrl).toMatch(/^manual:text:/);
@@ -204,7 +208,9 @@ describe('IngestService.ingestPdf', () => {
     );
 
     expect(result.alertId).toBe('alert-123');
-    const createArgs = prismaMock.alert.create.mock.calls[0]?.[0];
+    const createArgs = (
+      prismaMock.alert.create.mock.calls as { data: Record<string, unknown> }[][]
+    )[0]?.[0];
     expect(createArgs?.data.source).toBe('MANUAL');
     expect(createArgs?.data.sourceUrl).toBe('manual:pdf:regulation.pdf');
   });

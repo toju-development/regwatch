@@ -14,6 +14,13 @@ vi.mock('undici', () => ({
   fetch: vi.fn(),
 }));
 
+// Mock DNS — must be top-level (Vitest hoists vi.mock calls)
+vi.mock('node:dns/promises', () => ({
+  default: {
+    lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+  },
+}));
+
 import { fetch as undiciFetch } from 'undici';
 const mockedFetch = vi.mocked(undiciFetch);
 
@@ -78,14 +85,9 @@ describe('fetchUrl — happy path', () => {
   });
 
   it('returns text from mocked undici response', async () => {
-    // Mock DNS to return a safe IP.
-    vi.mock('node:dns/promises', () => ({
-      default: {
-        lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
-      },
-    }));
-
-    mockedFetch.mockResolvedValueOnce(makeResponse('hello world'));
+    mockedFetch.mockResolvedValueOnce(
+      makeResponse('hello world') as unknown as Awaited<ReturnType<typeof undiciFetch>>,
+    );
 
     const result = await fetchUrl('https://example.com/doc');
     expect(result.text).toBe('hello world');
@@ -93,16 +95,10 @@ describe('fetchUrl — happy path', () => {
   });
 
   it('extracts title from HTML response', async () => {
-    vi.mock('node:dns/promises', () => ({
-      default: {
-        lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
-      },
-    }));
-
     mockedFetch.mockResolvedValueOnce(
       makeResponse('<html><head><title>Test Page</title></head><body>content</body></html>', {
         contentType: 'text/html',
-      }),
+      }) as unknown as Awaited<ReturnType<typeof undiciFetch>>,
     );
 
     const result = await fetchUrl('https://example.com/page');

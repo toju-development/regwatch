@@ -14,14 +14,15 @@ vi.mock('pdf-parse', () => ({
   default: vi.fn(),
 }));
 
-import pdfParse from 'pdf-parse';
-const mockedPdfParse = vi.mocked(pdfParse);
+import * as pdfParseModule from 'pdf-parse';
+// pdf-parse has no default export — access via namespace
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pdfParseFn = (pdfParseModule as any).default as ReturnType<typeof vi.fn>;
+const mockedPdfParse = pdfParseFn;
 
 describe('extractPdfText', () => {
   it('returns extracted text from a valid PDF buffer', async () => {
-    mockedPdfParse.mockResolvedValueOnce({ text: 'extracted content', numpages: 1 } as Awaited<
-      ReturnType<typeof pdfParse>
-    >);
+    mockedPdfParse.mockResolvedValueOnce({ text: 'extracted content', numpages: 1 });
 
     const buffer = Buffer.from('fake-pdf-bytes');
     const result = await extractPdfText(buffer);
@@ -50,9 +51,7 @@ describe('extractPdfText', () => {
   });
 
   it('throws PdfExtractionError for a buffer exactly at the limit (boundary: OK)', async () => {
-    mockedPdfParse.mockResolvedValueOnce({ text: 'ok', numpages: 1 } as Awaited<
-      ReturnType<typeof pdfParse>
-    >);
+    mockedPdfParse.mockResolvedValueOnce({ text: 'ok', numpages: 1 });
 
     const exactly = Buffer.alloc(MAX_PDF_BYTES);
     const result = await extractPdfText(exactly);

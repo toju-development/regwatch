@@ -10,7 +10,9 @@
  *   - `pdf-parse` parse failure (corrupt / password-protected PDF).
  */
 
-import pdfParse from 'pdf-parse';
+import * as pdfParseModule from 'pdf-parse';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
 
 /** Max PDF size: 10 MB */
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;

@@ -66,7 +66,7 @@ export class IngestController {
   @Post('manual')
   @Roles('OWNER', 'ADMIN', 'ANALYST')
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_PDF_BYTES } }))
   async ingestManual(
     @UploadedFile() file: MulterFile | undefined,
     @Body() rawBody: unknown,
@@ -127,6 +127,10 @@ export class IngestController {
       // Exhaustive check — TypeScript narrowing makes this unreachable.
       throw new InternalServerErrorException('Unknown ingest type');
     } catch (err) {
+      if ((err as { code?: string }).code === 'LIMIT_FILE_SIZE') {
+        throw new BadRequestException('PDF exceeds size limit');
+      }
+
       if (err instanceof DuplicateAlertError) {
         // Return 409 with the existing alertId.
         // We throw so NestJS maps to the correct HTTP status via a filter,

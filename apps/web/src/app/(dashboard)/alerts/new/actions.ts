@@ -156,10 +156,10 @@ export async function ingestManual(formData: FormData): Promise<IngestResult> {
     }
 
     // URL and text: JSON body via apiServerFetch.
-    const body: Record<string, string | undefined> = { inputType };
+    const body: Record<string, string | undefined> = { type: inputType };
     body.jurisdiction = (formData.get('jurisdiction') as string | null) ?? undefined;
     const regulatorId = formData.get('regulatorId') as string | null;
-    if (regulatorId) body.regulatorId = regulatorId;
+    if (regulatorId) body.regulator = regulatorId;
 
     if (inputType === 'url') {
       body.url = (formData.get('url') as string | null) ?? undefined;

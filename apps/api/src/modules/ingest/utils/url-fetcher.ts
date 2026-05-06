@@ -89,6 +89,8 @@ function isPrivateIpv6(ip: string): boolean {
   const normalised = ip.toLowerCase().replace(/[\[\]]/g, '');
   if (normalised === '::1') return true;
   if (normalised.startsWith('fe80:')) return true;
+  // Unique local addresses: fc00::/7 (fc and fd prefixes)
+  if (normalised.startsWith('fc') || normalised.startsWith('fd')) return true;
   return false;
 }
 
@@ -103,7 +105,7 @@ async function assertSafeHostname(hostname: string): Promise<void> {
     throw new SsrfBlockedError(`IP address ${hostname} is in a private/loopback/link-local range`);
   }
 
-  let records: dns.LookupAddress[];
+  let records: { address: string; family: number }[];
   try {
     // `all: true` returns every A/AAAA record so we can block multi-homed
     // hosts that mix public and private addresses.
@@ -155,6 +157,7 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
     response = await undiciFetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': USER_AGENT },
+      redirect: 'manual',
     });
   } catch (err) {
     clearTimeout(timeoutId);
@@ -164,6 +167,10 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
     throw err;
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    throw new SsrfBlockedError('Redirects are not followed to prevent SSRF bypass');
   }
 
   if (!response.ok) {
@@ -201,5 +208,5 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
   const text = new TextDecoder().decode(Buffer.concat(chunks));
   const title = isHtml ? extractTitle(text) : undefined;
 
-  return { text, title };
+  return title !== undefined ? { text, title } : { text };
 }

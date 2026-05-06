@@ -24,6 +24,7 @@ import { PRISMA_CLIENT } from '../../../common/prisma/prisma.token.js';
 import { CLASSIFIER_AGENT_FACTORY, ENRICHMENT_SERVICE, WRITER_AGENT_FACTORY } from '../tokens.js';
 import { USAGE_HELPER } from '../../scan/tokens.js';
 import { EnrichmentModule } from '../enrichment.module.js';
+import { EnrichmentService } from '../enrichment.service.js';
 
 // ─── Stubs ────────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ describe('EnrichmentController — POST /enrich/trigger (HTTP integration)', () 
       .overrideProvider(ENRICHMENT_SERVICE)
       .useValue(mockEnrichmentService)
       // Also override the class token so useExisting resolves to our stub.
-      .overrideProvider('EnrichmentService')
+      .overrideProvider(EnrichmentService)
       .useValue(mockEnrichmentService)
       .compile();
 

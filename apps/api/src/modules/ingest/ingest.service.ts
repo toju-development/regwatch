@@ -186,7 +186,7 @@ export class IngestService {
       title,
       fullContent,
       jurisdiction,
-      regulator,
+      // regulator field: MVP-8 (no Alert.regulator column yet — stored in params but not persisted)
     } = params;
 
     try {
@@ -199,12 +199,8 @@ export class IngestService {
           title,
           fullContent,
           jurisdiction,
-          // regulatorId is a relation FK in the schema; regulator is stored as
-          // a string for MVP-7 (no Regulator entity yet — stored inline).
-          // If the schema has a `regulatorId` FK we omit it here until that
-          // entity exists. For now, store in title prefix if provided.
+          // regulator field: MVP-8 (no Alert.regulator column yet)
           enrichmentStatus: 'PENDING',
-          ...(regulator ? {} : {}),
         },
         select: { id: true },
       });
