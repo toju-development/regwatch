@@ -97,6 +97,7 @@ interface AlertRow {
   summary: string;
   source: string;
   enrichmentStatus: string;
+  jurisdiction: string | null;
   scanLog: { jurisdiction: string } | null;
 }
 
@@ -107,6 +108,7 @@ function makePrisma(alertOverrides: Partial<AlertRow> = {}) {
     summary: LONG_SUMMARY,
     source: 'BCRA',
     enrichmentStatus: 'PENDING',
+    jurisdiction: null,
     scanLog: { jurisdiction: 'AR' },
     ...alertOverrides,
   } as AlertRow);
@@ -161,8 +163,8 @@ describe('EnrichmentService.enrichAlert', () => {
 
       await svc.enrichAlert(ALERT_ID, ORG_ID);
 
-      // Should have called update at least twice (CLASSIFIED, then COMPLETED)
-      expect(prisma._mocks.alertUpdate).toHaveBeenCalledTimes(2);
+      // Should have called update 3 times: CLASSIFIED, WRITTEN (pre-writer transit), COMPLETED
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalledTimes(3);
 
       // First update: CLASSIFIED with classifier output
       const firstUpdate = prisma._mocks.alertUpdate.mock.calls[0]![0] as {
@@ -174,13 +176,19 @@ describe('EnrichmentService.enrichAlert', () => {
       expect(firstUpdate.data.relevanceScore).toBe(85);
       expect(firstUpdate.data.relevant).toBe(true);
 
-      // Second update: COMPLETED with writer output
+      // Second update: WRITTEN transit state (CF-MVP7-1)
       const secondUpdate = prisma._mocks.alertUpdate.mock.calls[1]![0] as {
         data: Record<string, unknown>;
       };
-      expect(secondUpdate.data.enrichmentStatus).toBe('COMPLETED');
-      expect(typeof secondUpdate.data.executiveSummary).toBe('string');
-      expect(Array.isArray(secondUpdate.data.citations)).toBe(true);
+      expect(secondUpdate.data.enrichmentStatus).toBe('WRITTEN');
+
+      // Third update: COMPLETED with writer output
+      const thirdUpdate = prisma._mocks.alertUpdate.mock.calls[2]![0] as {
+        data: Record<string, unknown>;
+      };
+      expect(thirdUpdate.data.enrichmentStatus).toBe('COMPLETED');
+      expect(typeof thirdUpdate.data.executiveSummary).toBe('string');
+      expect(Array.isArray(thirdUpdate.data.citations)).toBe(true);
 
       // Two EnrichmentLog rows: classifier + writer
       expect(prisma._mocks.enrichmentLogCreate).toHaveBeenCalledTimes(2);
@@ -364,9 +372,9 @@ describe('EnrichmentService.enrichAlert', () => {
 
       await expect(svc.enrichAlert(ALERT_ID, ORG_ID)).resolves.toBeUndefined();
 
-      // Updates: CLASSIFIED + WRITE_FAILED
-      expect(prisma._mocks.alertUpdate).toHaveBeenCalledTimes(2);
-      const lastUpdate = prisma._mocks.alertUpdate.mock.calls[1]![0] as {
+      // Updates: CLASSIFIED + WRITTEN (transit) + WRITE_FAILED
+      expect(prisma._mocks.alertUpdate).toHaveBeenCalledTimes(3);
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls[2]![0] as {
         data: Record<string, unknown>;
       };
       expect(lastUpdate.data.enrichmentStatus).toBe('WRITE_FAILED');
@@ -517,6 +525,67 @@ describe('EnrichmentService.enrichAlert', () => {
 
       await expect(svc.enrichAlert('nonexistent', ORG_ID)).resolves.toBeUndefined();
       expect(prisma._mocks.alertUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CF-MVP7-1: WRITTEN transit state (R-8)', () => {
+    it('sets enrichmentStatus=WRITTEN before invoking runWriter', async () => {
+      const prisma = makePrisma();
+      const writerCallOrder: string[] = [];
+
+      // Spy on alertUpdate to record call order, and writerFactory call to detect writer invocation
+      const originalUpdate = prisma._mocks.alertUpdate;
+      originalUpdate.mockImplementation((args: { data: Record<string, unknown> }) => {
+        writerCallOrder.push(`update:${String(args.data.enrichmentStatus)}`);
+        return Promise.resolve({});
+      });
+
+      // Custom writer factory that records when the writer is called
+      const writerFactory = () => ({
+        model: 'test',
+        call: vi.fn().mockImplementation(() => {
+          writerCallOrder.push('writer:invoked');
+          return Promise.resolve({
+            rawText: VALID_WRITER_JSON,
+            tokensIn: 200,
+            tokensOut: 100,
+          });
+        }),
+      });
+
+      const svc = makeService(
+        prisma,
+        makeClassifierFactory(VALID_CLASSIFIER_JSON),
+        writerFactory as never,
+        makeUsageHelper(false),
+      );
+
+      await svc.enrichAlert(ALERT_ID, ORG_ID);
+
+      // WRITTEN must appear before writer:invoked in the call order
+      const writtenIdx = writerCallOrder.indexOf('update:WRITTEN');
+      const writerInvokedIdx = writerCallOrder.indexOf('writer:invoked');
+
+      expect(writtenIdx).toBeGreaterThanOrEqual(0);
+      expect(writerInvokedIdx).toBeGreaterThanOrEqual(0);
+      expect(writtenIdx).toBeLessThan(writerInvokedIdx);
+    });
+
+    it('jurisdiction falls back to alert.jurisdiction before scanLog.jurisdiction (B2.2)', async () => {
+      // alert.jurisdiction = 'BR' → should resolve to 'pt' output language
+      const prisma = makePrisma({ jurisdiction: 'BR', scanLog: null });
+      const svc = makeService(
+        prisma,
+        makeClassifierFactory(VALID_CLASSIFIER_JSON),
+        makeWriterFactory(VALID_WRITER_JSON),
+        makeUsageHelper(false),
+      );
+
+      // Should not throw — jurisdiction resolution uses alert.jurisdiction
+      await expect(svc.enrichAlert(ALERT_ID, ORG_ID)).resolves.toBeUndefined();
+      // Full pipeline ran (COMPLETED)
+      const lastUpdate = prisma._mocks.alertUpdate.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.enrichmentStatus).toBe('COMPLETED');
     });
   });
 });

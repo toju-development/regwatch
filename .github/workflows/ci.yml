@@ -60,6 +60,8 @@ jobs:
       JWT_AUDIENCE: regwatch-api
       EMAIL_TRANSPORT: memory
       AUTH_FAKE_GOOGLE: '1'
+      # MVP-7: required by createApiEnv (InternalSecretGuard) — no default.
+      SCANNER_INTERNAL_SECRET: ci-internal-secret
 
     steps:
       - name: Checkout
@@ -146,6 +148,9 @@ jobs:
       JWT_AUDIENCE: regwatch-api
       EMAIL_TRANSPORT: memory
       AUTH_FAKE_GOOGLE: '1'
+      # MVP-7: required by createApiEnv (InternalSecretGuard) — apps/api
+      # WebServer won't start without it.
+      SCANNER_INTERNAL_SECRET: ci-internal-secret
 
     steps:
       - name: Checkout

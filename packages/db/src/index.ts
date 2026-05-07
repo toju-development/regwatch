@@ -1,4 +1,5 @@
 export { prisma } from './client.js';
+export { normalizeUrl, computeSourceUrlHash } from './dedup.js';
 export { DEV_INVITATION_TOKEN, generateInvitationToken } from './tokens.js';
 export {
   computeInvitationStatus,

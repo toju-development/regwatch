@@ -84,22 +84,9 @@ export class EnrichmentListener {
       `handleScanCompleted: enriching ${alertIds.length} alerts for scanLog=${scanLogId}`,
     );
 
-    const counts = {
-      completed: 0,
-      classifyFailed: 0,
-      writeFailed: 0,
-      skippedCap: 0,
-      skippedIrrelevant: 0,
-    };
-    const totalCost = new Prisma.Decimal(0);
-
     for (const alertId of alertIds) {
       try {
         await this.enrichmentService.enrichAlert(alertId, organizationId);
-        // Note: counts are approximated here since enrichAlert doesn't return
-        // the outcome. Precise counts would require reading the Alert status
-        // post-enrichment — deferred to B6 if needed for the event payload.
-        counts.completed++;
       } catch (err) {
         // Belt-and-suspenders: enrichAlert should never throw (R-7), but if it
         // does we log and continue to the next alert.
@@ -108,7 +95,52 @@ export class EnrichmentListener {
             err instanceof Error ? err.message : String(err)
           }`,
         );
-        counts.classifyFailed++;
+      }
+    }
+
+    // CF-MVP7-2: compute accurate totalCostUsd and counts from DB post-loop.
+    // The loop above doesn't track outcomes — enrichAlert is void. We query
+    // the final Alert statuses and EnrichmentLog costs instead.
+    const [enrichmentLogs, enrichedAlerts] = await Promise.all([
+      this.prisma.enrichmentLog.findMany({
+        where: { alertId: { in: alertIds } },
+        select: { costUsd: true },
+      }),
+      this.prisma.alert.findMany({
+        where: { id: { in: alertIds } },
+        select: { id: true, enrichmentStatus: true },
+      }),
+    ]);
+
+    const totalCostDecimal = enrichmentLogs.reduce(
+      (sum, log) => sum.add(log.costUsd),
+      new Prisma.Decimal(0),
+    );
+
+    const counts = {
+      completed: 0,
+      classifyFailed: 0,
+      writeFailed: 0,
+      skippedCap: 0,
+      skippedIrrelevant: 0,
+    };
+    for (const a of enrichedAlerts) {
+      switch (a.enrichmentStatus) {
+        case 'COMPLETED':
+          counts.completed++;
+          break;
+        case 'CLASSIFY_FAILED':
+          counts.classifyFailed++;
+          break;
+        case 'WRITE_FAILED':
+          counts.writeFailed++;
+          break;
+        case 'SKIPPED_CAP_EXCEEDED':
+          counts.skippedCap++;
+          break;
+        case 'SKIPPED_IRRELEVANT':
+          counts.skippedIrrelevant++;
+          break;
       }
     }
 
@@ -119,7 +151,7 @@ export class EnrichmentListener {
       jurisdiction,
       alertIds,
       counts,
-      totalCostUsd: totalCost.toString(),
+      totalCostUsd: totalCostDecimal.toString(),
       completedAt: completedAt.toISOString(),
     };
 

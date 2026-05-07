@@ -41,12 +41,15 @@ import { createWriterAgentFactory, type WriterAgentFactory } from './agents/writ
 import { EnrichmentService, type UsageHelper } from './enrichment.service.js';
 import { EnrichmentListener } from './enrichment.listener.js';
 import { EnrichmentSweeper } from './enrichment.sweeper.js';
+import { EnrichmentController } from './enrichment.controller.js';
+import { InternalSecretGuard } from './guards/internal-secret.guard.js';
 
 // Internal token — GEMINI_CLIENT for the enrichment module only.
 // ScanModule does not export its GEMINI_CLIENT, so we create our own.
 const ENRICHMENT_GEMINI_CLIENT = Symbol.for('regwatch.enrichment.GEMINI_CLIENT');
 
 @Module({
+  controllers: [EnrichmentController],
   providers: [
     {
       provide: ENRICHMENT_GEMINI_CLIENT,
@@ -84,6 +87,7 @@ const ENRICHMENT_GEMINI_CLIENT = Symbol.for('regwatch.enrichment.GEMINI_CLIENT')
     },
     EnrichmentListener,
     EnrichmentSweeper,
+    InternalSecretGuard,
   ],
   exports: [EnrichmentService, ENRICHMENT_SERVICE],
 })

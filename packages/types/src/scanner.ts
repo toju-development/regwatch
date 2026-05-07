@@ -35,6 +35,8 @@ export const AlertSourceSchema = z.enum([
   'BCRA_COMUNICADOS_B',
   'BCRA_COMUNICADOS_C',
   'CNV_RESOLUCIONES_GENERALES',
+  // MVP-7 manual ingestion (sdd/manual-ingestion R-SCHEMA-1)
+  'MANUAL',
 ]);
 export type AlertSource = z.infer<typeof AlertSourceSchema>;
 

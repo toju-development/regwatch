@@ -4,43 +4,26 @@
  * Spec: sdd/scanner-vertical-ar/spec R-4-Dedup (URL normalization, cross-org).
  * Design: sdd/scanner-vertical-ar/design ADR-9 (normalization rules + sha256 hex).
  *
- * Stripping rules (MVP-5):
- *   - lowercase hostname
- *   - drop fragment
- *   - drop query string entirely (revisit if false-negatives in production)
- *   - strip trailing slashes from pathname
- *   - canonical scheme casing (toString already lowercases)
+ * B2.5 (manual-ingestion MVP-7): `normalizeUrl` and `computeSourceUrlHash` are
+ * now the canonical implementations from `@regwatch/db/dedup` (ADR-6 single
+ * source of truth). Re-exported here for backwards compatibility with existing
+ * callers in this module.
  *
  * Deterministic helper — NEVER exposed as an LLM agent tool (ADR-2: persistence
  * stays out of the agent surface, no LLM-driven `organizationId`).
  */
-import { createHash } from 'node:crypto';
-
+import { normalizeUrl, computeSourceUrlHash } from '@regwatch/db/dedup';
 import type { Finding } from '@regwatch/types/scanner';
 
-/**
- * Normalize a URL string into a stable comparison form.
- *
- * Throws on invalid URL — caller (`ScanService`) catches and warns.
- */
-export function normalizeUrl(rawUrl: string): string {
-  const url = new URL(rawUrl);
-  url.hash = '';
-  url.search = '';
-  url.hostname = url.hostname.toLowerCase();
-  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-  return url.toString();
-}
-
-/** sha256 hex (64 chars) of the normalized URL. Used for `Alert.sourceUrlHash`. */
-export function computeSourceUrlHash(rawUrl: string): string {
-  return createHash('sha256').update(normalizeUrl(rawUrl)).digest('hex');
-}
+export { normalizeUrl, computeSourceUrlHash };
 
 /**
  * In-memory dedup pass before the DB write loop. Keeps the FIRST occurrence of
  * each `sourceUrlHash`. The DB `@@unique([organizationId, sourceUrlHash])`
  * remains the authoritative gate (cross-process race-safe).
+ *
+ * Hashes the NORMALIZED form of each URL (via `normalizeUrl`) so that cosmetic
+ * variants collapse to the same slot.
  */
 export function dedupFindings<T extends Pick<Finding, 'sourceUrl'>>(findings: readonly T[]): T[] {
   const seen = new Set<string>();
@@ -48,7 +31,7 @@ export function dedupFindings<T extends Pick<Finding, 'sourceUrl'>>(findings: re
   for (const f of findings) {
     let hash: string;
     try {
-      hash = computeSourceUrlHash(f.sourceUrl);
+      hash = computeSourceUrlHash(normalizeUrl(f.sourceUrl));
     } catch {
       // malformed URL — drop silently; ScanService logs separately.
       continue;
