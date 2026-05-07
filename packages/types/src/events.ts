@@ -16,6 +16,7 @@ import {
   ScanScheduleSchema,
   SettingsJurisdictionsSchema,
 } from './settings.js';
+import { ALERT_STATUS_VALUES } from './collaboration.js';
 
 // ─── Scanner: scan.completed ────────────────────────────────────────────────
 
@@ -106,3 +107,54 @@ export const EnrichmentCompletedEventSchema = z.object({
 });
 
 export type EnrichmentCompletedEvent = z.infer<typeof EnrichmentCompletedEventSchema>;
+
+// ─── Alert collaboration events (MVP-8) ─────────────────────────────────────
+
+/**
+ * Emitted POST-commit by `AlertsService.transition()` when an Alert changes status.
+ *
+ * Spec: `sdd/alert-collaboration/spec` — R "Domain Events Pre-Wired".
+ * Listener wiring: MVP-9 (`notify-slack`). Until then emitted with no consumer.
+ */
+export const ALERT_STATUS_CHANGED_EVENT = 'alert.status.changed' as const;
+
+export const AlertStatusChangedEventSchema = z.object({
+  alertId: z.string().min(1),
+  organizationId: z.string().min(1),
+  actorId: z.string().min(1),
+  fromStatus: z.enum(ALERT_STATUS_VALUES).nullable(),
+  toStatus: z.enum(ALERT_STATUS_VALUES),
+  note: z.string().nullable(),
+  changedAt: z.iso.datetime(),
+});
+export type AlertStatusChangedEvent = z.infer<typeof AlertStatusChangedEventSchema>;
+
+/**
+ * Emitted POST-commit by `AlertsService.assign()`.
+ */
+export const ALERT_ASSIGNED_EVENT = 'alert.assigned' as const;
+
+export const AlertAssignedEventSchema = z.object({
+  alertId: z.string().min(1),
+  organizationId: z.string().min(1),
+  actorId: z.string().min(1),
+  assigneeId: z.string().nullable(),
+  assignedAt: z.iso.datetime(),
+});
+export type AlertAssignedEvent = z.infer<typeof AlertAssignedEventSchema>;
+
+/**
+ * Emitted POST-commit by `AlertsService.conclude()`.
+ *
+ * Spec scenario: "alert.concluded emitted — carries { alertId, organizationId, actorId, conclusion }".
+ */
+export const ALERT_CONCLUDED_EVENT = 'alert.concluded' as const;
+
+export const AlertConcludedEventSchema = z.object({
+  alertId: z.string().min(1),
+  organizationId: z.string().min(1),
+  actorId: z.string().min(1),
+  conclusion: z.string().min(1),
+  concludedAt: z.iso.datetime(),
+});
+export type AlertConcludedEvent = z.infer<typeof AlertConcludedEventSchema>;
