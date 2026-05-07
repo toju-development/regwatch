@@ -32,10 +32,14 @@ async function signInFakeGoogle(
   email: string,
 ): Promise<void> {
   await page.goto('/login');
-  await page.getByTestId('dev-fake-google-btn').click();
-  await page.getByTestId('dev-email-input').fill(email);
-  await page.getByTestId('dev-sign-in-submit').click();
-  await page.waitForURL('**/dashboard**');
+  await page.getByTestId('fake-google-email').fill(email);
+  const [actionResp] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/login') && r.request().method() === 'POST'),
+    page.getByTestId('fake-google-signin').click(),
+  ]);
+  expect([200, 303]).toContain(actionResp.status());
+  await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 });
+  await page.waitForLoadState('load');
 }
 
 // ---------------------------------------------------------------------------
@@ -75,9 +79,9 @@ test.describe('alerts/new — manual ingestion UI', () => {
     },
   );
 
-  test.skip('S1: valid URL + jurisdiction → submits and redirects to /dashboard', // The API mock approach would need MSW or a test-server setup that // NOTE: Skipped — requires apps/api + apps/scanner running.
-  // is not yet configured for this project. Primary coverage: B4 unit tests.
-  async ({ page }) => {
+  test.skip('S1: valid URL + jurisdiction → submits and redirects to /dashboard', async ({ // is not yet configured for this project. Primary coverage: B4 unit tests. // The API mock approach would need MSW or a test-server setup that // NOTE: Skipped — requires apps/api + apps/scanner running.
+    page,
+  }) => {
     const email = `alerts-new-s1-${Date.now()}@test.local`;
     await signInFakeGoogle(page, email);
 
