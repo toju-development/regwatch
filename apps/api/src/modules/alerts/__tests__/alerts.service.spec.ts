@@ -24,6 +24,7 @@ import {
 } from '@nestjs/common';
 import { AlertsService } from '../alerts.service.js';
 import type { AlertsRepo, AlertWithMeta, CommentRow } from '../alerts.repository.js';
+import { ALERT_CONCLUDED_EVENT } from '@regwatch/types';
 
 // ─── Minimal alert fixture ─────────────────────────────────────────────────
 
@@ -151,6 +152,37 @@ describe('AlertsService.transition', () => {
     await service.transition('org-1', 'alert-1', 'CONCLUDED', { id: 'user-1', role: 'OWNER' });
 
     expect(repo.updateAlert).toHaveBeenCalled();
+  });
+
+  it('DEBATING → CONCLUDED emits alert.concluded event', async () => {
+    const repo = makeRepo({
+      findById: vi
+        .fn()
+        .mockResolvedValue(
+          makeAlert({ status: 'DEBATING', conclusion: 'This is the conclusion.' }),
+        ),
+    });
+    const emitter = makeEmitter();
+    const service = makeService(repo, emitter);
+
+    await service.transition(
+      'org-1',
+      'alert-1',
+      'CONCLUDED',
+      { id: 'user-1', role: 'OWNER' },
+      'note',
+    );
+
+    const calls = emitter.emit.mock.calls;
+    const concludedCall = calls.find((c) => c[0] === ALERT_CONCLUDED_EVENT);
+    expect(concludedCall).toBeDefined();
+    expect(concludedCall![1]).toMatchObject({
+      alertId: 'alert-1',
+      organizationId: 'org-1',
+      actorId: 'user-1',
+      fromStatus: 'DEBATING',
+      note: 'note',
+    });
   });
 
   it('invalid transition NEW → CONCLUDED throws UnprocessableEntityException', async () => {
