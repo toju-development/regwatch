@@ -90,7 +90,7 @@ describe('NotificationsRepo', () => {
     });
 
     expect(result.id).toBe('chan-1');
-    const call = (prisma.notificationChannel.upsert as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (prisma.notificationChannel.upsert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.where).toEqual({
       organizationId_provider: { organizationId: 'org-1', provider: 'SLACK' },
     });
@@ -102,7 +102,8 @@ describe('NotificationsRepo', () => {
 
     const result = await repo.listChannels('org-1');
     expect(result).toHaveLength(2);
-    const call = (prisma.notificationChannel.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (prisma.notificationChannel.findMany as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0];
     expect(call.orderBy).toEqual({ createdAt: 'asc' });
   });
 

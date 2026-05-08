@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationsListenerService } from '../notifications.listener.service.js';
-import type { NotificationPort, NotificationContext } from '@regwatch/types';
+import type { NotificationPort, NotificationContext, AlertStatus } from '@regwatch/types';
 import type { PrismaClient } from '@regwatch/db/client';
 
 // ─── Mock context ─────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ describe('NotificationsListenerService', () => {
       alertId: 'alert-1',
       organizationId: 'org-1',
       actorId: 'actor-1',
-      fromStatus: 'ANALYZING',
+      fromStatus: 'ANALYZING' as AlertStatus,
       toStatus: 'CONCLUDED',
       note: null,
       changedAt: new Date().toISOString(),
@@ -119,7 +119,7 @@ describe('NotificationsListenerService', () => {
         alertId: 'alert-1',
         organizationId: 'org-1',
         actorId: 'actor-1',
-        fromStatus: 'ANALYZING',
+        fromStatus: 'ANALYZING' as AlertStatus,
         note: null,
         concludedAt: new Date().toISOString(),
       }),
@@ -138,7 +138,7 @@ describe('NotificationsListenerService', () => {
       alertId: 'alert-1',
       organizationId: 'org-1',
       actorId: 'actor-1',
-      fromStatus: 'ANALYZING',
+      fromStatus: 'ANALYZING' as AlertStatus,
       note: null,
       concludedAt: new Date().toISOString(),
     });
@@ -153,7 +153,7 @@ describe('NotificationsListenerService', () => {
       alertId: 'alert-1',
       organizationId: 'org-1',
       actorId: 'actor-1',
-      fromStatus: 'ANALYZING',
+      fromStatus: 'ANALYZING' as AlertStatus,
       note: null,
       concludedAt: new Date().toISOString(),
     };
@@ -173,8 +173,8 @@ describe('NotificationsListenerService', () => {
       alertId: 'alert-1',
       organizationId: 'org-1',
       actorId: 'actor-1',
-      fromStatus: 'NEW',
-      toStatus: 'TRIAGING',
+      fromStatus: 'NEW' as AlertStatus,
+      toStatus: 'TRIAGING' as AlertStatus,
       note: null,
       changedAt: new Date().toISOString(),
     };
@@ -225,7 +225,7 @@ describe('NotificationsListenerService', () => {
         alertId: 'alert-1',
         organizationId: 'org-1',
         actorId: 'actor-1',
-        fromStatus: 'ANALYZING',
+        fromStatus: 'ANALYZING' as AlertStatus,
         note: null,
         concludedAt: new Date().toISOString(),
       }),

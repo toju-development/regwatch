@@ -78,17 +78,17 @@ describe('SlackAdapter', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, options] = fetchMock.mock.calls[0]! as [string, RequestInit];
     expect(url).toBe(WEBHOOK_URL);
 
     const body = JSON.parse(options.body as string) as {
       attachments: Array<{ color: string; text: string; actions: Array<{ url: string }> }>;
     };
     expect(body.attachments).toHaveLength(1);
-    expect(body.attachments[0].color).toBe('#22c55e');
-    expect(body.attachments[0].text).toContain('Alert concluded');
-    expect(body.attachments[0].text).toContain('Jane Doe');
-    expect(body.attachments[0].actions[0].url).toBe(ctx.alertUrl);
+    expect(body.attachments[0]!.color).toBe('#22c55e');
+    expect(body.attachments[0]!.text).toContain('Alert concluded');
+    expect(body.attachments[0]!.text).toContain('Jane Doe');
+    expect(body.attachments[0]!.actions[0]!.url).toBe(ctx.alertUrl);
   });
 
   // ── sendAlertStatusChanged ─────────────────────────────────────────────────
@@ -108,11 +108,11 @@ describe('SlackAdapter', () => {
     );
 
     const body = JSON.parse(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
+      (fetchMock.mock.calls[0]! as [string, RequestInit])[1].body as string,
     ) as { attachments: Array<{ color: string; text: string }> };
 
-    expect(body.attachments[0].color).toBe('#f59e0b'); // amber for TRIAGING
-    expect(body.attachments[0].text).toContain('TRIAGING');
+    expect(body.attachments[0]!.color).toBe('#f59e0b'); // amber for TRIAGING
+    expect(body.attachments[0]!.text).toContain('TRIAGING');
   });
 
   // ── sendAlertAssigned ──────────────────────────────────────────────────────
@@ -130,11 +130,11 @@ describe('SlackAdapter', () => {
     );
 
     const body = JSON.parse(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
+      (fetchMock.mock.calls[0]! as [string, RequestInit])[1].body as string,
     ) as { attachments: Array<{ color: string; text: string }> };
 
-    expect(body.attachments[0].color).toBe('#3b82f6');
-    expect(body.attachments[0].text).toContain('John Smith');
+    expect(body.attachments[0]!.color).toBe('#3b82f6');
+    expect(body.attachments[0]!.text).toContain('John Smith');
   });
 
   it('sendAlertAssigned: null assigneeName → "Unassigned"', async () => {
@@ -152,9 +152,9 @@ describe('SlackAdapter', () => {
     );
 
     const body = JSON.parse(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
+      (fetchMock.mock.calls[0]! as [string, RequestInit])[1].body as string,
     ) as { attachments: Array<{ text: string }> };
-    expect(body.attachments[0].text).toContain('Unassigned');
+    expect(body.attachments[0]!.text).toContain('Unassigned');
   });
 
   // ── non-2xx error ──────────────────────────────────────────────────────────

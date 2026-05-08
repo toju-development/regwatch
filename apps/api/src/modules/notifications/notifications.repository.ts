@@ -51,7 +51,7 @@ export class NotificationsRepo {
       },
       update: {
         webhookUrl: data.webhookUrl,
-        channelName: data.channelName ?? undefined,
+        channelName: data.channelName ?? null,
       },
       create: {
         organizationId: data.organizationId,
