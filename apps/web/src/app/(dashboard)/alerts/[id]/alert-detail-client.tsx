@@ -148,6 +148,13 @@ export function AlertDetailClient({
   // Conclusion form
   const [conclusionText, setConclusionText] = useState(alert.conclusion ?? '');
 
+  // Sync client state when initialData changes (router.refresh() polling)
+  useEffect(() => {
+    setAlert(initialData as AlertWithMeta);
+    setAssigneeInput((initialData as AlertWithMeta).assigneeId ?? '');
+    setConclusionText((initialData as AlertWithMeta).conclusion ?? '');
+  }, [initialData]);
+
   // ── Fetch comments ─────────────────────────────────────────────────────────
 
   const fetchComments = useCallback(

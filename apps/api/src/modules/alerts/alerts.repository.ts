@@ -74,7 +74,7 @@ export interface AlertListItem {
 }
 
 export interface ListFilters {
-  status?: AlertStatus | AlertStatus[];
+  status?: AlertStatus[];
   assigneeId?: string;
   cursor?: string;
   limit: number;
@@ -119,16 +119,16 @@ export class AlertsRepo {
 
   async listByOrg(orgId: string, filters: ListFilters): Promise<CursorPage<AlertListItem>> {
     const { status, assigneeId, cursor, limit } = filters;
-    const statusList = status ? (Array.isArray(status) ? status : [status]) : undefined;
+    const statusList = status?.length ? status : undefined;
 
     const items = (await this.prisma.alert.findMany({
       where: {
         organizationId: orgId,
         ...(statusList ? { status: { in: statusList } } : {}),
         ...(assigneeId ? { assigneeId } : {}),
-        ...(cursor ? { id: { lt: cursor } } : {}),
       },
-      orderBy: { detectedAt: 'desc' },
+      orderBy: { id: 'desc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: limit + 1,
       select: {
         id: true,
@@ -157,11 +157,9 @@ export class AlertsRepo {
     limit: number,
   ): Promise<CursorPage<CommentRow>> {
     const items = (await this.prisma.alertComment.findMany({
-      where: {
-        alertId,
-        ...(cursor ? { id: { gt: cursor } } : {}),
-      },
-      orderBy: { createdAt: 'asc' },
+      where: { alertId },
+      orderBy: { id: 'asc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: limit + 1,
     })) as CommentRow[];
 

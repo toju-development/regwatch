@@ -7,7 +7,25 @@ import { ALERT_STATUS_VALUES } from '@regwatch/types';
 
 export const listAlertsSchema = z.object({
   status: z
-    .union([z.enum(ALERT_STATUS_VALUES), z.string().transform((v) => v.split(','))])
+    .preprocess(
+      (v) => {
+        if (Array.isArray(v))
+          return v
+            .flatMap((s) =>
+              String(s)
+                .split(',')
+                .map((x) => x.trim()),
+            )
+            .filter(Boolean);
+        if (typeof v === 'string')
+          return v
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean);
+        return v;
+      },
+      z.array(z.enum(ALERT_STATUS_VALUES)).optional(),
+    )
     .optional(),
   assigneeId: z.string().optional(),
   cursor: z.string().optional(),

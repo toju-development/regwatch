@@ -19,7 +19,7 @@ import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { AlertsController } from './alerts.controller.js';
 import { AlertsService } from './alerts.service.js';
 import { AlertsRepo } from './alerts.repository.js';
-import { ALERTS_ENV_TOKEN, ALERTS_PRISMA_TOKEN } from './tokens.js';
+import { ALERTS_ENV_TOKEN, ALERTS_PRISMA_TOKEN, ALERTS_REPO_TOKEN } from './tokens.js';
 import { env } from '../../env.js';
 
 @Module({
@@ -34,10 +34,9 @@ import { env } from '../../env.js';
       useValue: env,
     },
     {
-      provide: 'ALERTS_REPO',
+      provide: ALERTS_REPO_TOKEN,
       useClass: AlertsRepo,
     },
-    AlertsRepo,
     AlertsService,
   ],
   exports: [AlertsService],

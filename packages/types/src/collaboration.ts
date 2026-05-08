@@ -47,6 +47,7 @@ export type AlertEventKind = (typeof ALERT_EVENT_KIND_VALUES)[number];
  *   TRIAGING → ANALYZING (OWNER|ADMIN|assignee)
  *   ANALYZING → DEBATING (OWNER|ADMIN|assignee, ≥1 comment required by UI gate)
  *   ANALYZING → CONCLUDED (OWNER|ADMIN, conclusion required)
+ *   DEBATING → ANALYZING (OWNER|ADMIN|assignee)
  *   DEBATING → CONCLUDED (OWNER|ADMIN, conclusion required)
  *   ANY → ARCHIVED (OWNER|ADMIN)
  *   ARCHIVED → NEW (OWNER|ADMIN)
@@ -102,7 +103,8 @@ export const TRANSITION_RULES: Partial<Record<`${AlertStatus}->${AlertStatus}`, 
 
 /**
  * Generic cursor-paginated response envelope.
- * Design D4: cursor = last item `id` (CUID2 monotonic prefix = stable sort).
+ * Design D4: cursor = last item `id`; queries order by `id` to guarantee
+ * stable pagination (CUID2 ids sort by insertion order).
  */
 export interface CursorPage<T> {
   items: T[];

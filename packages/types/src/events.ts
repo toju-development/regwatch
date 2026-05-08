@@ -146,15 +146,16 @@ export type AlertAssignedEvent = z.infer<typeof AlertAssignedEventSchema>;
 /**
  * Emitted POST-commit by `AlertsService.conclude()`.
  *
- * Spec scenario: "alert.concluded emitted — carries { alertId, organizationId, actorId, conclusion }".
+ * Spec scenario: "alert.conclusion.updated emitted — carries { alertId, organizationId, actorId, conclusion }".
+ * Note: conclude() only updates conclusion text, not the alert status.
  */
-export const ALERT_CONCLUDED_EVENT = 'alert.concluded' as const;
+export const ALERT_CONCLUSION_UPDATED_EVENT = 'alert.conclusion.updated' as const;
 
-export const AlertConcludedEventSchema = z.object({
+export const AlertConclusionUpdatedEventSchema = z.object({
   alertId: z.string().min(1),
   organizationId: z.string().min(1),
   actorId: z.string().min(1),
   conclusion: z.string().min(1),
-  concludedAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
-export type AlertConcludedEvent = z.infer<typeof AlertConcludedEventSchema>;
+export type AlertConclusionUpdatedEvent = z.infer<typeof AlertConclusionUpdatedEventSchema>;

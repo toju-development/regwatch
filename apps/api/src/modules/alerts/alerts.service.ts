@@ -28,7 +28,7 @@ import {
   TRANSITION_RULES,
   ALERT_STATUS_CHANGED_EVENT,
   ALERT_ASSIGNED_EVENT,
-  ALERT_CONCLUDED_EVENT,
+  ALERT_CONCLUSION_UPDATED_EVENT,
 } from '@regwatch/types';
 import type {
   AlertsRepo,
@@ -39,6 +39,7 @@ import type {
   ListFilters,
 } from './alerts.repository.js';
 import type { ListAlertsDto } from './dto/list-alerts.dto.js';
+import { ALERTS_REPO_TOKEN } from './tokens.js';
 
 // Actor shape from JWT / OrgScopeGuard
 export interface Actor {
@@ -51,16 +52,15 @@ export class AlertsService {
   private readonly logger = new Logger(AlertsService.name);
 
   constructor(
-    @Inject('ALERTS_REPO') private readonly repo: AlertsRepo,
+    @Inject(ALERTS_REPO_TOKEN) private readonly repo: AlertsRepo,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
   ) {}
 
   // ─── List / Get ───────────────────────────────────────────────────────────
 
   async listAlerts(orgId: string, filters: ListAlertsDto): Promise<CursorPage<AlertListItem>> {
-    const statusFilter = filters.status as AlertStatus | AlertStatus[] | undefined;
     const repoFilters: ListFilters = { limit: filters.limit ?? 20 };
-    if (statusFilter !== undefined) repoFilters.status = statusFilter;
+    if (filters.status !== undefined) repoFilters.status = filters.status as AlertStatus[];
     if (filters.assigneeId !== undefined) repoFilters.assigneeId = filters.assigneeId;
     if (filters.cursor !== undefined) repoFilters.cursor = filters.cursor;
     return this.repo.listByOrg(orgId, repoFilters);
@@ -236,16 +236,16 @@ export class AlertsService {
     });
 
     try {
-      this.events.emit(ALERT_CONCLUDED_EVENT, {
+      this.events.emit(ALERT_CONCLUSION_UPDATED_EVENT, {
         alertId,
         organizationId: orgId,
         actorId: actor.id,
         conclusion,
-        concludedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
     } catch (err) {
       this.logger.warn(
-        `Failed to emit ${ALERT_CONCLUDED_EVENT}: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to emit ${ALERT_CONCLUSION_UPDATED_EVENT}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
