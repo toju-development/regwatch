@@ -20,6 +20,7 @@ import { useActiveOrg } from '@/lib/active-org-store';
 import { apiFetch } from '@/lib/api-fetch';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { AlertStatusBadge } from '@/components/ui/alert-status-badge';
 import type { AlertStatus, CursorPage } from '@regwatch/types';
 import { ALERT_STATUS_VALUES } from '@regwatch/types';
 
@@ -43,16 +44,6 @@ const inputCls =
   'block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ' +
   'placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-50';
-
-const STATUS_BADGE: Record<AlertStatus, string> = {
-  NEW: 'bg-blue-100 text-blue-800',
-  TRIAGING: 'bg-yellow-100 text-yellow-800',
-  ANALYZING: 'bg-orange-100 text-orange-800',
-  DEBATING: 'bg-purple-100 text-purple-800',
-  CONCLUDED: 'bg-green-100 text-green-800',
-  DISTRIBUTED: 'bg-gray-100 text-gray-800',
-  ARCHIVED: 'bg-gray-100 text-gray-500',
-};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -194,14 +185,7 @@ export default function AlertsPage(): React.ReactElement {
                   {alert.assignee && <> · {alert.assignee.name ?? alert.assignee.email}</>}
                 </p>
               </div>
-              <span
-                className={cn(
-                  'ml-4 shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
-                  STATUS_BADGE[alert.status],
-                )}
-              >
-                {alert.status}
-              </span>
+              <AlertStatusBadge status={alert.status} className="ml-4 shrink-0" />
             </button>
           ))}
         </div>
