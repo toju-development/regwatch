@@ -76,6 +76,7 @@ import { auth } from '@/lib/auth';
 import { resolveActiveOrg } from '@/lib/active-org-resolve';
 import { ActiveOrgProvider } from '@/components/org-switcher/active-org-provider';
 import { OrgSwitcher } from '@/components/org-switcher/org-switcher';
+import { NavLinks } from '@/components/dashboard/nav-links';
 
 export default async function DashboardLayout({
   children,
@@ -102,6 +103,7 @@ export default async function DashboardLayout({
           <header className="border-b" data-testid="dashboard-header">
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
               <div className="font-semibold">RegWatch</div>
+              <NavLinks />
               <OrgSwitcher />
             </div>
           </header>

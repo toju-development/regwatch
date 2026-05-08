@@ -137,23 +137,21 @@ export function DashboardClient(): React.ReactElement {
       className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-8"
       data-testid="dashboard-section"
     >
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-        <dt className="text-muted-foreground">Hydrated</dt>
-        <dd data-testid="dashboard-hydrated">{hydrated ? 'yes' : 'no'}</dd>
-
-        <dt className="text-muted-foreground">Active org</dt>
-        <dd data-testid="dashboard-active-org">{activeOrgId ?? 'none'}</dd>
-
-        <dt className="text-muted-foreground">Memberships</dt>
-        <dd data-testid="dashboard-membership-count">{memberships.length}</dd>
-
-        <dt className="text-muted-foreground">/api/org/me</dt>
-        <dd data-testid="dashboard-me">
-          {meError ? `error: ${meError}` : me ? me.orgSlug : 'pending…'}
-        </dd>
-      </dl>
+      {/* Hydration + store sentinels — read by E2E (org-switcher.spec.ts,
+          members.spec.ts, invitations.spec.ts, settings-preferences.spec.ts).
+          Hidden visually; screen-reader-hidden too (sr-only + aria-hidden). */}
+      <span data-testid="dashboard-hydrated" className="sr-only" aria-hidden="true">
+        {hydrated ? 'yes' : 'no'}
+      </span>
+      <span data-testid="dashboard-active-org" className="sr-only" aria-hidden="true">
+        {activeOrgId ?? 'none'}
+      </span>
+      <span data-testid="dashboard-membership-count" className="sr-only" aria-hidden="true">
+        {memberships.length}
+      </span>
+      <span data-testid="dashboard-me" className="sr-only" aria-hidden="true">
+        {meError ? `error: ${meError}` : me ? me.orgSlug : 'pending…'}
+      </span>
 
       <div className="flex gap-2">
         <Button
