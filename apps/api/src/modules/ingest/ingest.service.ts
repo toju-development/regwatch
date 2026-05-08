@@ -186,7 +186,7 @@ export class IngestService {
       title,
       fullContent,
       jurisdiction,
-      // regulator field: MVP-8 (no Alert.regulator column yet — stored in params but not persisted)
+      regulator,
     } = params;
 
     try {
@@ -199,7 +199,8 @@ export class IngestService {
           title,
           fullContent,
           jurisdiction,
-          // regulator field: MVP-8 (no Alert.regulator column yet)
+          regulator,
+          status: 'NEW',
           enrichmentStatus: 'PENDING',
         },
         select: { id: true },

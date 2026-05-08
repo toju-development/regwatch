@@ -132,6 +132,10 @@ model User {
   // as every Membership write so JWTs carrying a stale `mv` claim are detected
   // by `MembershipFreshnessGuard`. Additive default 0 — pre-existing rows get 0.
   membershipsVersion Int           @default(0) @map("memberships_version")
+  // MVP-8 collaboration back-relations
+  assignedAlerts     Alert[]        @relation("AlertAssignee")
+  alertComments      AlertComment[]
+  alertEvents        AlertEvent[]
 }
 
 model Account {
@@ -233,6 +237,28 @@ model Settings {
   updatedAt DateTime @updatedAt
 }
 
+// ─── Alert collaboration enums (sdd/alert-collaboration — MVP-8, migration #12) ─
+
+// Per-alert review lifecycle state machine.
+// DISTRIBUTED is system-only (set by MVP-14 distributor, never by human actors).
+enum AlertStatus {
+  NEW
+  TRIAGING
+  ANALYZING
+  DEBATING
+  CONCLUDED
+  DISTRIBUTED
+  ARCHIVED
+}
+
+// Audit event kinds written in the same transaction as each collaboration action.
+enum AlertEventKind {
+  STATUS_CHANGED
+  ASSIGNED
+  CONCLUSION_UPDATED
+  COMMENT_ADDED
+}
+
 // ─── Scanner domain (sdd/scanner-vertical-ar — MVP-5) ──────────────────────
 //
 // Sole writer: `apps/scanner` ScanService.runScan(orgId) inside a single
@@ -246,6 +272,21 @@ model Alert {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // ── MVP-8 collaboration columns (migration #12) ──
+  // status: per-alert review lifecycle; default NEW.
+  // assigneeId: FK to User; nullable; preserved for audit even after membership revoked.
+  // conclusion: free-text summary; required before transitioning to CONCLUDED.
+  // regulator: optional short label from ingest payload (MVP-7 TODO resolved).
+  status      AlertStatus @default(NEW)
+  assigneeId  String?
+  conclusion  String?     @db.Text
+  regulator   String?     @db.VarChar(128)
+
+  assignee    User?       @relation("AlertAssignee", fields: [assigneeId], references: [id])
+
+  comments    AlertComment[]
+  events      AlertEvent[]
 
   source        AlertSource
   sourceUrl     String      @db.VarChar(2048)
@@ -371,4 +412,54 @@ model EnrichmentLog {
 
   @@index([organizationId, createdAt])
   @@index([alertId])
+}
+
+// ─── Alert collaboration domain (sdd/alert-collaboration — MVP-8, migration #12) ─
+
+// Threaded comment on an Alert. Max depth = 1 (replies to top-level only).
+// organizationId is denormalized for efficient org-scoped listing queries.
+// editedAt is nullable — set on edit, null until the comment is first edited.
+model AlertComment {
+  id             String    @id @default(cuid())
+  alertId        String
+  organizationId String
+  authorId       String
+  body           String    @db.Text
+  parentId       String?   // depth=1 max; null = root comment
+  editedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  alert   Alert         @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  author  User          @relation(fields: [authorId], references: [id])
+  parent  AlertComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies AlertComment[] @relation("CommentReplies")
+
+  @@index([alertId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+// Append-only audit trail. One row per meaningful action on an Alert.
+// Written in the same $transaction as the triggering write (INV spec scenario).
+// organizationId denormalized for efficient org-scoped event feeds.
+// fromStatus/toStatus: set for STATUS_CHANGED events; null for others.
+// assigneeId: set for ASSIGNED events; null for others.
+// note: optional actor-provided comment text captured at write time.
+model AlertEvent {
+  id             String         @id @default(cuid())
+  alertId        String
+  organizationId String
+  actorId        String
+  kind           AlertEventKind
+  fromStatus     AlertStatus?
+  toStatus       AlertStatus?
+  assigneeId     String?
+  note           String?        @db.Text
+  createdAt      DateTime       @default(now())
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  actor User  @relation(fields: [actorId], references: [id])
+
+  @@index([alertId, createdAt])
+  @@index([organizationId, createdAt])
 }
