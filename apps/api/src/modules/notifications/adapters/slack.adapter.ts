@@ -109,32 +109,4 @@ export class SlackAdapter implements NotificationPort {
       attachments: [buildAttachment(COLOR_ASSIGNED, text, ctx.alertUrl)],
     });
   }
-
-  async sendAlertStatusChanged(
-    payload: AlertStatusChangedEvent,
-    ctx: NotificationContext & { webhookUrl: string },
-  ): Promise<void> {
-    const color = STATUS_COLORS[payload.toStatus as AlertStatus] ?? '#94a3b8';
-    const text =
-      `🔵 *Status changed* to \`${payload.toStatus}\` by ${ctx.actorName}\n` +
-      `*${ctx.alertTitle}* — ${ctx.orgName}`;
-
-    await post(ctx.webhookUrl, {
-      attachments: [buildAttachment(color, text, ctx.alertUrl)],
-    });
-  }
-
-  async sendAlertAssigned(
-    _payload: AlertAssignedEvent,
-    ctx: NotificationContext & { webhookUrl: string },
-  ): Promise<void> {
-    const assigneeLabel = ctx.assigneeName ?? 'Unassigned';
-    const text =
-      `🔔 *Alert assigned* to ${assigneeLabel} by ${ctx.actorName}\n` +
-      `*${ctx.alertTitle}* — ${ctx.orgName}`;
-
-    await post(ctx.webhookUrl, {
-      attachments: [buildAttachment(COLOR_ASSIGNED, text, ctx.alertUrl)],
-    });
-  }
 }
