@@ -29,6 +29,7 @@ import {
   ALERT_STATUS_CHANGED_EVENT,
   ALERT_ASSIGNED_EVENT,
   ALERT_CONCLUSION_UPDATED_EVENT,
+  ALERT_CONCLUDED_EVENT,
 } from '@regwatch/types';
 import type {
   AlertsRepo,
@@ -155,6 +156,23 @@ export class AlertsService {
       this.logger.warn(
         `Failed to emit ${ALERT_STATUS_CHANGED_EVENT}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+
+    if (toStatus === 'CONCLUDED') {
+      try {
+        this.events.emit(ALERT_CONCLUDED_EVENT, {
+          alertId,
+          organizationId: orgId,
+          actorId: actor.id,
+          fromStatus,
+          note: note ?? null,
+          concludedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to emit ${ALERT_CONCLUDED_EVENT}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     return (await this.repo.findById(alertId, orgId))!;

@@ -159,3 +159,21 @@ export const AlertConclusionUpdatedEventSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 export type AlertConclusionUpdatedEvent = z.infer<typeof AlertConclusionUpdatedEventSchema>;
+
+/**
+ * Emitted POST-commit by `AlertsService.transition()` when toStatus === 'CONCLUDED'.
+ *
+ * Distinct from `alert.conclusion.updated` (which fires when conclusion TEXT is written).
+ * This event signals the lifecycle milestone: the alert has been formally concluded.
+ */
+export const ALERT_CONCLUDED_EVENT = 'alert.concluded' as const;
+
+export const AlertConcludedEventSchema = z.object({
+  alertId: z.string().min(1),
+  organizationId: z.string().min(1),
+  actorId: z.string().min(1),
+  fromStatus: z.enum(ALERT_STATUS_VALUES).nullable(),
+  note: z.string().nullable(),
+  concludedAt: z.iso.datetime(),
+});
+export type AlertConcludedEvent = z.infer<typeof AlertConcludedEventSchema>;
