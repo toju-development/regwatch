@@ -42,12 +42,14 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
   const activeMembership = memberships.find((m) => m.organizationId === activeOrgId);
   const role: Role = activeMembership?.role ?? 'VIEWER';
 
-  // Parallel fetch: stats + recent alerts + assigned-to-me
+  // Parallel fetch: stats + recent alerts + assigned-to-me (skip assigned fetch when userId unknown)
   const orgFetchInit = activeOrgId ? { orgId: activeOrgId } : {};
   const [statsRes, recentRes, assignedRes] = await Promise.all([
     apiServerFetch('/alerts/stats', { method: 'GET', ...orgFetchInit }),
     apiServerFetch('/alerts?limit=10', { method: 'GET', ...orgFetchInit }),
-    apiServerFetch(`/alerts?assigneeId=${userId}&limit=5`, { method: 'GET', ...orgFetchInit }),
+    userId
+      ? apiServerFetch(`/alerts?assigneeId=${userId}&limit=5`, { method: 'GET', ...orgFetchInit })
+      : Promise.resolve(null),
   ]);
 
   // Stats — error → pass null (triggers visible error banner)
@@ -82,7 +84,7 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
     severity: string;
     detectedAt: string;
   }> = [];
-  if (assignedRes.ok) {
+  if (userId && assignedRes?.ok) {
     try {
       const page = (await assignedRes.json()) as CursorPage<{
         id: string;
@@ -113,9 +115,7 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
       </section>
 
       {/* Assigned to me (hidden for VIEWER) */}
-      <section className="mb-8">
-        <AssignedToMeList alerts={assignedAlerts} role={role} />
-      </section>
+      <AssignedToMeList alerts={assignedAlerts} role={role} />
 
       {/* Interactive island — session refresh + signout + E2E testids */}
       <DashboardClient />

@@ -38,7 +38,7 @@ export function AssignedToMeList({
   }
 
   return (
-    <section data-testid="assigned-to-me-section">
+    <section className="mb-8" data-testid="assigned-to-me-section">
       <h2 className="mb-3 text-lg font-semibold">Assigned to me</h2>
 
       {alerts.length === 0 ? (
