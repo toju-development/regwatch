@@ -35,6 +35,12 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
        * inconsistencies across env var sources.
        */
       MANUAL_INGEST_ENABLED: z.string().default('false'),
+      /**
+       * Public base URL of the web app — used by `NotificationsListenerService`
+       * to construct deep-link alert URLs in Slack messages.
+       * Default: `http://localhost:3000` (local dev). Override in production.
+       */
+      APP_URL: z.string().url().default('http://localhost:3000'),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,

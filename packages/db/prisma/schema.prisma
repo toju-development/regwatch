@@ -111,6 +111,7 @@ model Organization {
   alerts         Alert[]
   scanLogs       ScanLog[]
   enrichmentLogs EnrichmentLog[]
+  notificationChannels NotificationChannel[]
 }
 
 model User {
@@ -412,6 +413,31 @@ model EnrichmentLog {
 
   @@index([organizationId, createdAt])
   @@index([alertId])
+}
+
+// ─── Notifications domain (sdd/notify-slack — MVP-9, migration #13) ──────────
+
+// Append-only enum — future adapters (Teams, Email) add values here.
+enum NotificationProvider {
+  SLACK
+}
+
+// One row per (org, provider) pair — unique constraint prevents duplicate
+// channels. webhookUrl stored plaintext at MVP; encryption lands in POST-6.
+// isActive toggle lets orgs pause without deleting the webhook URL.
+model NotificationChannel {
+  id             String               @id @default(cuid())
+  organizationId String
+  provider       NotificationProvider
+  webhookUrl     String
+  channelName    String?
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
 }
 
 // ─── Alert collaboration domain (sdd/alert-collaboration — MVP-8, migration #12) ─
