@@ -69,6 +69,12 @@ export class NotificationsRepo {
     }) as Promise<NotificationChannelRow[]>;
   }
 
+  async findById(id: string): Promise<NotificationChannelRow | null> {
+    return this.prisma.notificationChannel.findUnique({
+      where: { id },
+    }) as Promise<NotificationChannelRow | null>;
+  }
+
   async deleteChannel(id: string): Promise<void> {
     await this.prisma.notificationChannel.delete({ where: { id } });
   }

@@ -118,7 +118,7 @@ export class NotificationsListenerService {
   // ─── Context resolution ──────────────────────────────────────────────────────
 
   /**
-   * Resolves all enrichment data in a single composite DB query.
+   * Resolves all enrichment data via parallel DB queries.
    * Returns `null` when no active Slack channel is configured for the org —
    * callers MUST return early without invoking the port.
    */
@@ -159,7 +159,7 @@ export class NotificationsListenerService {
 
     const rawTitle = alert.title ?? alert.sourceUrl ?? alertId;
     const alertTitle = rawTitle.length > 120 ? rawTitle.slice(0, 117) + '...' : rawTitle;
-    const alertUrl = `${env.APP_URL}/alerts/${alertId}`;
+    const alertUrl = new URL(`/alerts/${alertId}`, env.APP_URL).toString();
     const actorName = actor?.name ?? actor?.email ?? actorId;
     const assigneeName = assignee ? (assignee.name ?? assignee.email ?? assigneeId) : null;
 

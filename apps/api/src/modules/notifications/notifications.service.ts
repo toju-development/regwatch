@@ -60,11 +60,8 @@ export class NotificationsService {
     organizationId: string,
     channelId: string,
   ): Promise<NotificationChannelRow> {
-    // We can't query by (orgId, channelId) in one shot without a raw query,
-    // so we fetch by id and then assert ownership.
-    const channels = await this.repo.listChannels(organizationId);
-    const found = channels.find((c) => c.id === channelId);
-    if (!found) {
+    const found = await this.repo.findById(channelId);
+    if (!found || found.organizationId !== organizationId) {
       // Channel either doesn't exist or belongs to another org → 403 per spec
       throw new ForbiddenException('Channel not found or access denied');
     }

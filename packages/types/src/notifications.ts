@@ -14,8 +14,9 @@ import type { AlertConcludedEvent, AlertStatusChangedEvent, AlertAssignedEvent }
 
 /**
  * Enrichment context resolved by the listener for each incoming alert event.
- * All name fields fall back gracefully: actor/assignee names may be null when
- * the user row lacks a display name.
+ * `actorName` is always resolved — it falls back to the actor's email, then
+ * to the actor's id, so it is never null in practice. `assigneeName` is null
+ * only when the alert is unassigned.
  */
 export interface NotificationContext {
   alertId: string;
