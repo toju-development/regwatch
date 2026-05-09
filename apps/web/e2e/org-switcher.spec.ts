@@ -1,4 +1,6 @@
 import { expect, test, type Page, type BrowserContext } from '@playwright/test';
+import { PrismaClient } from '@regwatch/db/client';
+import { ensureOnboardingComplete } from './helpers';
 
 /**
  * E2E coverage for `sdd/org-membership-ux/spec` § R-Switcher full flow:
@@ -50,6 +52,15 @@ import { expect, test, type Page, type BrowserContext } from '@playwright/test';
 const SESSION_COOKIE_NAMES = ['authjs.session-token', '__Secure-authjs.session-token'];
 const ACTIVE_ORG_COOKIE_NAMES = ['regwatch.active-org', '__Secure-regwatch.active-org'];
 
+const DEFAULT_DB_URL = 'postgresql://postgres:root@localhost:5432/regwatch_dev?schema=public';
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL ?? DEFAULT_DB_URL } },
+});
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
+
 function uniqueEmail(tag: string): string {
   const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   return `${tag}-${stamp}@regwatch.local`;
@@ -95,6 +106,9 @@ test.describe('Org switcher full flow', () => {
 
       // ── Phase 1: sign in (auto-org gives the user exactly 1 membership) ──
       await fakeGoogleSignIn(page, email);
+      // Mark personal org onboarding complete so the dashboard layout redirect
+      // guard (MVP-11) does not redirect to /onboarding.
+      await ensureOnboardingComplete(prisma, email);
 
       // ── Phase 2: land on /dashboard, layout RSC mounts switcher ──
       // The first apiFetch('/api/org/me') will fire on hydration. Capture
@@ -129,6 +143,9 @@ test.describe('Org switcher full flow', () => {
       const created = await postOrgViaProxy(context, `Switcher Test ${Date.now()}`);
       expect(created.id).toBeTruthy();
       expect(created.id).not.toBe(initialActiveOrgId);
+      // New org also needs onboarding marked complete so switching to it
+      // doesn't trigger the redirect guard.
+      await ensureOnboardingComplete(prisma, email);
 
       // ── Phase 4: refresh session → JWT picks up new membership ──
       await page.getByTestId('dashboard-refresh-session').click();

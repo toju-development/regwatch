@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { PrismaClient, type Role } from '@regwatch/db/client';
+import { ensureOnboardingComplete } from './helpers';
 
 /**
  * E2E coverage for `sdd/org-invitations/spec` § R-Invitation-Issue,
@@ -266,6 +267,9 @@ test.describe('Invitations', () => {
       await fakeGoogleSignIn(page, ownerEmail);
 
       const org = await postOrgViaProxy(context, `Invite Org ${Date.now()}`);
+      // Mark all org Settings onboarding-complete so the dashboard redirect guard
+      // (MVP-11) does not redirect OWNER users to /onboarding.
+      await ensureOnboardingComplete(prisma, ownerEmail);
       await refreshSessionAndExpectMembershipCount(page, 2);
       await switchActiveOrg(context, org.id);
 
@@ -323,6 +327,9 @@ test.describe('Invitations', () => {
         const aEmail = uniqueEmail('accept-owner');
         await fakeGoogleSignIn(pageA, aEmail);
         const orgX = await postOrgViaProxy(ctxA, `Accept Org ${Date.now()}`);
+        // Mark onboarding complete for A (includes orgX) so the dashboard guard
+        // does not redirect. Also covers orgX when B switches to it.
+        await ensureOnboardingComplete(prisma, aEmail);
         await refreshSessionAndExpectMembershipCount(pageA, 2);
         await switchActiveOrg(ctxA, orgX.id);
 
@@ -338,6 +345,8 @@ test.describe('Invitations', () => {
         //     stale-JWT observer.
         await fakeGoogleSignIn(pageB1, bEmail);
         await fakeGoogleSignIn(pageB2, bEmail);
+        // Mark B's personal org onboarding complete so /dashboard doesn't redirect.
+        await ensureOnboardingComplete(prisma, bEmail);
 
         // Capture B2's `/api/org/me` responses so we can assert the
         // 401-STALE → 200 silent-retry signature after accept.
@@ -443,6 +452,8 @@ test.describe('Invitations', () => {
         const aEmail = uniqueEmail('mismatch-owner');
         await fakeGoogleSignIn(pageA, aEmail);
         const orgX = await postOrgViaProxy(ctxA, `Mismatch Org ${Date.now()}`);
+        // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+        await ensureOnboardingComplete(prisma, aEmail);
         await refreshSessionAndExpectMembershipCount(pageA, 2);
         await switchActiveOrg(ctxA, orgX.id);
 
@@ -497,6 +508,8 @@ test.describe('Invitations', () => {
       await fakeGoogleSignIn(page, ownerEmail);
 
       const orgX = await postOrgViaProxy(context, `Revoke Org ${Date.now()}`);
+      // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+      await ensureOnboardingComplete(prisma, ownerEmail);
       await refreshSessionAndExpectMembershipCount(page, 2);
       await switchActiveOrg(context, orgX.id);
 

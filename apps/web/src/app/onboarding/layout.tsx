@@ -17,6 +17,7 @@
  * NO `pnpm build` after changes (project rule).
  */
 import { redirect } from 'next/navigation';
+import { SessionProvider } from 'next-auth/react';
 import type { MembershipClaim } from '@regwatch/types';
 
 import { auth } from '@/lib/auth';
@@ -49,28 +50,38 @@ async function skipAllAction(): Promise<never> {
   redirect('/dashboard');
 }
 
-export default function OnboardingLayout({
+export default async function OnboardingLayout({
   children,
 }: {
   children: React.ReactNode;
-}): React.ReactElement {
+}): Promise<React.ReactElement> {
+  // Fetch the session so `<SessionProvider>` can seed `useSession()` in
+  // client components rendered inside the onboarding wizard (e.g.
+  // `<PreferencesForm>` calls `useSession().update()` after a successful
+  // save). Without this, next-auth throws:
+  //   "useSession must be wrapped in a <SessionProvider />"
+  // Mirrors the pattern used by `(dashboard)/layout.tsx` §4.
+  const session = await auth();
+
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b" data-testid="onboarding-header">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between px-4 py-3">
-          <div className="font-semibold">RegWatch</div>
-          <form action={skipAllAction}>
-            <button
-              type="submit"
-              className="text-muted-foreground hover:text-foreground text-sm"
-              data-testid="skip-all-button"
-            >
-              Skip all
-            </button>
-          </form>
-        </div>
-      </header>
-      <main className="flex-1">{children}</main>
-    </div>
+    <SessionProvider session={session}>
+      <div className="flex min-h-screen flex-col">
+        <header className="border-b" data-testid="onboarding-header">
+          <div className="mx-auto flex w-full max-w-4xl items-center justify-between px-4 py-3">
+            <div className="font-semibold">RegWatch</div>
+            <form action={skipAllAction}>
+              <button
+                type="submit"
+                className="text-muted-foreground hover:text-foreground text-sm"
+                data-testid="skip-all-button"
+              >
+                Skip all
+              </button>
+            </form>
+          </div>
+        </header>
+        <main className="flex-1">{children}</main>
+      </div>
+    </SessionProvider>
   );
 }
