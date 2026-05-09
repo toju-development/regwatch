@@ -195,6 +195,35 @@ describe('SettingsService', () => {
     });
   });
 
+  describe('completeOnboarding', () => {
+    it('delegates to repo.setOnboardingCompleted and returns the updated row', async () => {
+      // Spec: "PUT marks onboarding complete" — service is a thin delegate.
+      // Emitter MUST NOT fire (no settings.updated event for PATCH).
+      const completedAt = new Date('2026-05-09T10:00:00.000Z');
+      const updated = makeSettingsRow({ onboardingCompletedAt: completedAt });
+      const setOnboardingCompleted = vi.fn().mockResolvedValue(updated);
+      const repo = makeRepo({ setOnboardingCompleted });
+      const events = makeEvents();
+      const svc = new SettingsService(repo, events);
+
+      const result = await svc.completeOnboarding('org_1', completedAt);
+
+      expect(result).toBe(updated);
+      expect(setOnboardingCompleted).toHaveBeenCalledWith('org_1', completedAt);
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('propagates repo errors without emitting', async () => {
+      const boom = new Error('db error');
+      const repo = makeRepo({ setOnboardingCompleted: vi.fn().mockRejectedValue(boom) });
+      const events = makeEvents();
+      const svc = new SettingsService(repo, events);
+
+      await expect(svc.completeOnboarding('org_1', new Date())).rejects.toBe(boom);
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+  });
+
   describe('UpdateSettingsSchema cross-row invariants (validation contract)', () => {
     // R-Settings-Validation: the canonical schema rejects these four
     // shapes with the spec-mandated `error` codes. The service trusts
