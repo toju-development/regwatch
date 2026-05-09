@@ -11,6 +11,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@regwatch/db/client';
 import type { AlertStatus, AlertEventKind, CursorPage } from '@regwatch/types';
 import { ALERTS_PRISMA_TOKEN } from './tokens.js';
+import type { AlertStatsDto } from './dto/alert-stats.dto.js';
 
 // Shape returned by findById — include assignee and comment count
 export interface AlertWithMeta {
@@ -228,6 +229,36 @@ export class AlertsRepo {
 
   async deleteComment(commentId: string): Promise<void> {
     await this.prisma.alertComment.delete({ where: { id: commentId } });
+  }
+
+  /** Aggregate alert counts by status and severity for the org (MVP-10). */
+  async statsForOrg(orgId: string): Promise<AlertStatsDto> {
+    const [byStatusRaw, bySeverityRaw] = await Promise.all([
+      this.prisma.alert.groupBy({
+        by: ['status'],
+        where: { organizationId: orgId },
+        _count: { _all: true },
+      }),
+      this.prisma.alert.groupBy({
+        by: ['severity'],
+        where: { organizationId: orgId },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const row of byStatusRaw) {
+      byStatus[row.status as string] = row._count._all;
+    }
+
+    const bySeverity: Record<string, number> = {};
+    for (const row of bySeverityRaw) {
+      bySeverity[row.severity as string] = row._count._all;
+    }
+
+    const total = byStatusRaw.reduce((sum, r) => sum + r._count._all, 0);
+
+    return { byStatus, bySeverity, total };
   }
 
   /** Verify that userId has an active Membership in orgId (INV-COLLAB-1). */

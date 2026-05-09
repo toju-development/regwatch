@@ -40,6 +40,7 @@ import type {
   ListFilters,
 } from './alerts.repository.js';
 import type { ListAlertsDto } from './dto/list-alerts.dto.js';
+import type { AlertStatsDto } from './dto/alert-stats.dto.js';
 import { ALERTS_REPO_TOKEN } from './tokens.js';
 
 // Actor shape from JWT / OrgScopeGuard
@@ -71,6 +72,12 @@ export class AlertsService {
     const alert = await this.repo.findById(alertId, orgId);
     if (!alert) throw new NotFoundException('Alert not found');
     return alert;
+  }
+
+  // ─── Stats ────────────────────────────────────────────────────────────────
+
+  async getStats(orgId: string): Promise<AlertStatsDto> {
+    return this.repo.statsForOrg(orgId);
   }
 
   // ─── Transition ───────────────────────────────────────────────────────────

@@ -59,6 +59,17 @@ export class AlertsController {
   }
 
   /**
+   * GET /alerts/stats
+   * Aggregate alert counts by status and severity for the active org.
+   * Must be declared before GET :id to avoid NestJS route shadowing.
+   */
+  @Get('stats')
+  @Roles('OWNER', 'ADMIN', 'ANALYST', 'VIEWER')
+  async getStats(@CurrentOrg() orgId: string) {
+    return this.service.getStats(orgId);
+  }
+
+  /**
    * GET /alerts/:id
    * Get a single alert with enrichment data, assignee, and comment count.
    */

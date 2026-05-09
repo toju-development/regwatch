@@ -288,6 +288,98 @@ describe.skipIf(!dbAvailable)('AlertsModule (HTTP integration)', () => {
     expect(res.status).toBe(422);
   });
 
+  // ── GET /alerts/stats (MVP-10) ─────────────────────────────────────────────
+
+  it('GET /alerts/stats — unauthenticated → 401', async () => {
+    const res = await fetch(`${baseUrl}/alerts/stats`);
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /alerts/stats — VIEWER → 200 with AlertStatsDto shape', async () => {
+    const org = await createOrg();
+    const actor = await createUser();
+    await addMembership(actor.userId, org.id, 'VIEWER');
+    const jwt = await getJwt(actor, org, 'VIEWER');
+
+    const res = await fetch(`${baseUrl}/alerts/stats`, {
+      headers: { authorization: `Bearer ${jwt}`, 'x-org-id': org.id },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { byStatus: unknown; bySeverity: unknown; total: unknown };
+    expect(body).toHaveProperty('byStatus');
+    expect(body).toHaveProperty('bySeverity');
+    expect(body).toHaveProperty('total');
+  });
+
+  it('GET /alerts/stats — ANALYST → 200 with counts reflecting real data', async () => {
+    const org = await createOrg();
+    const actor = await createUser();
+    await addMembership(actor.userId, org.id, 'ANALYST');
+    const jwt = await getJwt(actor, org, 'ANALYST');
+
+    // Create two alerts for this org
+    await createAlert(org.id);
+    await createAlert(org.id);
+
+    const res = await fetch(`${baseUrl}/alerts/stats`, {
+      headers: { authorization: `Bearer ${jwt}`, 'x-org-id': org.id },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      byStatus: Record<string, number>;
+      bySeverity: Record<string, number>;
+      total: number;
+    };
+    // Both alerts start as NEW
+    expect(body.byStatus['NEW']).toBeGreaterThanOrEqual(2);
+    expect(body.total).toBeGreaterThanOrEqual(2);
+  });
+
+  it('GET /alerts/stats — org with no alerts → all zeros / empty records, total=0', async () => {
+    const org = await createOrg();
+    const actor = await createUser();
+    await addMembership(actor.userId, org.id, 'OWNER');
+    const jwt = await getJwt(actor, org, 'OWNER');
+
+    const res = await fetch(`${baseUrl}/alerts/stats`, {
+      headers: { authorization: `Bearer ${jwt}`, 'x-org-id': org.id },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      byStatus: Record<string, number>;
+      bySeverity: Record<string, number>;
+      total: number;
+    };
+    expect(body.total).toBe(0);
+    expect(Object.keys(body.byStatus)).toHaveLength(0);
+    expect(Object.keys(body.bySeverity)).toHaveLength(0);
+  });
+
+  it('GET /alerts/stats — counts are scoped to the org (no cross-org leakage)', async () => {
+    const orgA = await createOrg();
+    const orgB = await createOrg();
+    const actorA = await createUser();
+    const actorB = await createUser();
+    await addMembership(actorA.userId, orgA.id, 'OWNER');
+    await addMembership(actorB.userId, orgB.id, 'OWNER');
+    const jwtA = await getJwt(actorA, orgA, 'OWNER');
+
+    // Create alerts only in org B
+    await createAlert(orgB.id);
+
+    const res = await fetch(`${baseUrl}/alerts/stats`, {
+      headers: { authorization: `Bearer ${jwtA}`, 'x-org-id': orgA.id },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number };
+    // org A has 0 alerts — must not see org B's alerts
+    expect(body.total).toBe(0);
+  });
+
   it('Comment depth > 1 → 400', async () => {
     const org = await createOrg();
     const actor = await createUser();
