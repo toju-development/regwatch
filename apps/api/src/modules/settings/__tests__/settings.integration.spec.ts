@@ -546,6 +546,66 @@ describe.skipIf(!dbAvailable)('SettingsController (HTTP integration)', () => {
       });
     });
 
+    it('MVP-12 — PUT with scanSchedule=monthly and scanDayOfMonth persists correctly', async () => {
+      const { org, actor } = await seed('OWNER');
+      const jwt = await getJwt(actor, org, 'OWNER');
+
+      const body: UpdateSettingsInput = {
+        jurisdictions: [{ code: 'AR', enabled: true, customTopics: '' }],
+        scanSchedule: 'monthly',
+        scanDay: 'mon',
+        scanHour: 8,
+        scanDayOfMonth: 15,
+      };
+
+      const res = await fetch(`${baseUrl}/org/${org.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          'x-org-id': org.id,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+
+      const row = await prisma.settings.findUniqueOrThrow({
+        where: { organizationId: org.id },
+      });
+      expect(row.scanSchedule).toBe('monthly');
+      expect(row.scanDayOfMonth).toBe(15);
+    });
+
+    it('MVP-12 — PUT with scanSchedule=monthly and no scanDayOfMonth → defaults to 1 in DB', async () => {
+      const { org, actor } = await seed('OWNER');
+      const jwt = await getJwt(actor, org, 'OWNER');
+
+      const body: UpdateSettingsInput = {
+        jurisdictions: [{ code: 'AR', enabled: true, customTopics: '' }],
+        scanSchedule: 'monthly',
+        scanDay: 'mon',
+        scanHour: 6,
+        // scanDayOfMonth omitted — should default to 1
+      };
+
+      const res = await fetch(`${baseUrl}/org/${org.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          'x-org-id': org.id,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+
+      const row = await prisma.settings.findUniqueOrThrow({
+        where: { organizationId: org.id },
+      });
+      expect(row.scanSchedule).toBe('monthly');
+      expect(row.scanDayOfMonth).toBe(1); // DB default
+    });
+
     it('cascade-on-org-delete (migration #6) — Settings row drops with the org', async () => {
       const { org, actor } = await seed('OWNER');
       const jwt = await getJwt(actor, org, 'OWNER');
