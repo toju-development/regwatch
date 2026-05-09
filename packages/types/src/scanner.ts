@@ -31,12 +31,25 @@ import { z } from 'zod';
  * enum extension is cheap; values are append-only).
  */
 export const AlertSourceSchema = z.enum([
+  // AR — Argentina (MVP-5)
   'BCRA_COMUNICADOS_A',
   'BCRA_COMUNICADOS_B',
   'BCRA_COMUNICADOS_C',
   'CNV_RESOLUCIONES_GENERALES',
   // MVP-7 manual ingestion (sdd/manual-ingestion R-SCHEMA-1)
   'MANUAL',
+  // BR — Brazil (MVP-13)
+  'BCB_CIRCULARES',
+  'BCB_RESOLUCOES',
+  'CVM_RESOLUCOES',
+  // CO — Colombia (MVP-13)
+  'SFC_CIRCULARES_EXTERNAS',
+  // PE — Peru (MVP-13)
+  'SBS_RESOLUCIONES',
+  'SBS_CIRCULARES',
+  // CL — Chile (MVP-13)
+  'CMF_NORMAS',
+  'CMF_RESOLUCIONES',
 ]);
 export type AlertSource = z.infer<typeof AlertSourceSchema>;
 

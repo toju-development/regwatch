@@ -16,8 +16,8 @@ enum Role {
 }
 
 // Scanner enums (sdd/scanner-vertical-ar/design ADR-7, migration #7).
-// `AlertSource` is append-only — MVP-13 will add CNBV_MX_*, SBS_PE_*, BR_BCB_*,
-// CL_CMF_*. PG enum extension is cheap (no `ALTER TYPE … RENAME`).
+// `AlertSource` is append-only — MVP-13 adds BR/CO/PE/CL sources.
+// PG enum extension is cheap (no `ALTER TYPE … RENAME`).
 enum AlertSource {
   BCRA_COMUNICADOS_A
   BCRA_COMUNICADOS_B
@@ -25,6 +25,18 @@ enum AlertSource {
   CNV_RESOLUCIONES_GENERALES
   /// MVP-7 manual ingestion (migration #11, sdd/manual-ingestion R-SCHEMA-1)
   MANUAL
+  /// MVP-13 — Brazil (BCB + CVM)
+  BCB_CIRCULARES
+  BCB_RESOLUCOES
+  CVM_RESOLUCOES
+  /// MVP-13 — Colombia (SFC)
+  SFC_CIRCULARES_EXTERNAS
+  /// MVP-13 — Peru (SBS)
+  SBS_RESOLUCIONES
+  SBS_CIRCULARES
+  /// MVP-13 — Chile (CMF)
+  CMF_NORMAS
+  CMF_RESOLUCIONES
 }
 
 // MVP-6 migration #9 (sdd/classifier-and-writer spec P1, B1.3):
