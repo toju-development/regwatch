@@ -17,6 +17,7 @@ import type { MembershipClaim, SettingsJurisdictions } from '@regwatch/types';
 import { auth } from '@/lib/auth';
 import { resolveActiveOrg } from '@/lib/active-org-resolve';
 import { apiServerFetch } from '@/lib/api-server';
+import { OnboardingWizard } from '@/components/onboarding/onboarding-wizard';
 
 /** Wire shape from `GET /org/:orgId/settings` (mirrors SettingsDto). */
 interface SettingsWire {
@@ -72,15 +73,25 @@ export default async function OnboardingPage(): Promise<React.ReactElement> {
 
   const initialChannel = channels.find((c) => c.provider === 'SLACK') ?? null;
 
-  // Render a placeholder shell — the OnboardingWizard client component
-  // will be added in Phase 3 (MVP-11 P3).
+  const initialSettings = {
+    jurisdictions: settings.jurisdictions,
+    scanSchedule: settings.scanSchedule,
+    scanDay: settings.scanDay,
+    scanHour: settings.scanHour,
+  };
+
+  const channel = initialChannel
+    ? { webhookUrl: initialChannel.webhookUrl, channelName: initialChannel.channelName ?? null }
+    : null;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="onboarding-page">
       <h1 className="mb-8 text-2xl font-semibold">Welcome to RegWatch</h1>
-      {/* OnboardingWizard mounts here in Phase 3 */}
-      <pre className="hidden" data-testid="onboarding-debug">
-        {JSON.stringify({ orgId: activeOrgId, hasSlack: !!initialChannel }, null, 2)}
-      </pre>
+      <OnboardingWizard
+        orgId={activeOrgId}
+        initialSettings={initialSettings}
+        initialChannel={channel}
+      />
     </div>
   );
 }
