@@ -67,6 +67,7 @@ export const SettingsUpdatedEventSchema = z.object({
   scanSchedule: ScanScheduleSchema,
   scanDay: ScanDaySchema,
   scanHour: ScanHourSchema,
+  scanDayOfMonth: z.number().int().min(1).max(28).nullable().optional(),
   /** ISO-8601 timestamp (`Date.toISOString()`). */
   updatedAt: z.iso.datetime(),
 });

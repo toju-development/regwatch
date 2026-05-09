@@ -52,8 +52,8 @@ function makeScan(impl?: (orgId: string, jurisdiction: string) => Promise<unknow
 const WED_08 = new Date('2026-04-29T08:00:00Z');
 const WED_09 = new Date('2026-04-29T09:00:00Z');
 
-// AR jurisdiction as JSON array (matches Settings.jurisdictions storage)
-const AR_JURISDICTIONS = JSON.stringify(['AR']);
+// AR jurisdiction in the canonical JSONB shape (SettingsJurisdictionsSchema).
+const AR_JURISDICTIONS = JSON.stringify([{ code: 'AR', enabled: true, customTopics: [] }]);
 
 describe('ScanSchedulerService.runTick', () => {
   it('dispatches runScan(orgId, jurisdiction) only for orgs whose cadence matches now', async () => {
@@ -218,7 +218,10 @@ describe('ScanSchedulerService.runTick', () => {
           scanSchedule: 'daily',
           scanDay: 'mon',
           scanHour: 8,
-          jurisdictions: JSON.stringify(['AR', 'MX']),
+          jurisdictions: JSON.stringify([
+            { code: 'AR', enabled: true, customTopics: [] },
+            { code: 'MX', enabled: true, customTopics: [] },
+          ]),
         },
       },
     ];
@@ -243,7 +246,7 @@ describe('ScanSchedulerService.runTick', () => {
           scanSchedule: 'daily',
           scanDay: 'mon',
           scanHour: 8,
-          jurisdictions: JSON.stringify(['AR']),
+          jurisdictions: JSON.stringify([{ code: 'AR', enabled: true, customTopics: [] }]),
         },
       },
     ];
@@ -255,5 +258,33 @@ describe('ScanSchedulerService.runTick', () => {
 
     expect(runScan).toHaveBeenCalledTimes(1);
     expect(runScan).toHaveBeenCalledWith('org-ar', 'AR');
+  });
+
+  it('skips jurisdictions with enabled: false — does not dispatch', async () => {
+    const orgs: OrgRow[] = [
+      {
+        id: 'org-disabled-ar',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: JSON.stringify([
+            { code: 'AR', enabled: false, customTopics: [] },
+            { code: 'MX', enabled: false, customTopics: [] },
+          ]),
+        },
+      },
+    ];
+    const { prisma } = makePrisma(orgs);
+    const { scan, runScan } = makeScan();
+
+    const svc = new ScanSchedulerService(prisma, scan);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warnSpy = vi.spyOn((svc as any).logger, 'warn');
+    await svc.runTick(WED_08);
+
+    // All jurisdictions disabled → normalizes to empty → skipped with warn.
+    expect(runScan).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('org-disabled-ar'));
   });
 });

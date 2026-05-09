@@ -30,6 +30,7 @@ export interface SettingsDto {
   scanSchedule: UpdateSettingsInput['scanSchedule'];
   scanDay: string;
   scanHour: number;
+  scanDayOfMonth: number | null;
   updatedAt: string;
   /** ISO-8601 timestamp when onboarding was completed, or null if not yet done. */
   onboardingCompletedAt: string | null;
@@ -55,6 +56,7 @@ export function toSettingsDto(row: Settings): SettingsDto {
     scanSchedule: row.scanSchedule as UpdateSettingsInput['scanSchedule'],
     scanDay: row.scanDay,
     scanHour: row.scanHour,
+    scanDayOfMonth: row.scanDayOfMonth ?? null,
     updatedAt: row.updatedAt.toISOString(),
     onboardingCompletedAt: row.onboardingCompletedAt?.toISOString() ?? null,
   };

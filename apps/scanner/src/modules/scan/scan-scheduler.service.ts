@@ -93,12 +93,17 @@ export class ScanSchedulerService {
         // Never lazy-create Settings here — owned by R-Settings-Get-Lazy-Create.
         if (!org.settings) continue;
 
-        // Parse jurisdictions — stored as JSON in the DB.
+        // Parse jurisdictions — stored as JSONB in the canonical
+        // `{ code, enabled, customTopics? }[]` shape (SettingsJurisdictionsSchema).
+        // Handle both the canonical object shape and a legacy plain-string array
+        // so existing rows from earlier migrations still dispatch correctly.
         let jurisdictions: string[];
         try {
           const raw = org.settings.jurisdictions;
-          const parsed = Array.isArray(raw) ? raw : JSON.parse(raw as string);
-          jurisdictions = parsed as string[];
+          const items = Array.isArray(raw) ? raw : JSON.parse(raw as string);
+          jurisdictions = (items as Array<{ code: string; enabled: boolean } | string>)
+            .filter((j) => typeof j === 'string' || j.enabled)
+            .map((j) => (typeof j === 'string' ? j : j.code));
         } catch {
           jurisdictions = [];
         }
