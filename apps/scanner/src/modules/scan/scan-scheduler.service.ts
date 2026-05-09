@@ -1,18 +1,21 @@
 /**
  * MVP-5 ScanScheduler — global hourly `@Cron` tick that iterates orgs with
  * a `Settings` row, asks `shouldScanNow(settings, now)`, and fires
- * `ScanService.runScan(orgId)` fire-and-forget.
+ * `ScanService.runScan(orgId, jurisdiction)` fire-and-forget.
  *
- * DEPRECATED-IN-MVP-12: replace this single global cron with per-org
- * scheduler entries (TZ-aware) once `scheduler-per-org` lands. Until then
- * this is the WHOLE scheduling surface.
+ * MVP-12 (scheduler-per-org): now jurisdiction-aware. For each org the tick
+ * parses `Settings.jurisdictions`, filters to `SUPPORTED_JURISDICTIONS`, and
+ * dispatches one `runScan` per matching jurisdiction. Orgs with an empty
+ * jurisdictions array are skipped with a warning. The global `@Cron` tick is
+ * the permanent scheduling surface (no per-org `SchedulerRegistry` needed).
  *
- * Spec: sdd/scanner-vertical-ar/spec R-7.
- * Design: sdd/scanner-vertical-ar/design ADR-3 + ADR-4.
+ * Spec: sdd/scanner-vertical-ar/spec R-7;
+ *       sdd/scheduler-per-org/spec R-Scheduler-*.
+ * Design: sdd/scanner-vertical-ar/design ADR-3 + ADR-4;
+ *         sdd/scheduler-per-org/design.
  *
- * Concurrency: per-org dedup is already handled inside `ScanService.runScan`
- * (ADR-6 mutex). The scheduler may legally double-fire across cron+manual
- * trigger paths — the mutex collapses to ONE in-flight scan per org.
+ * Concurrency: per-org:jurisdiction dedup is handled inside
+ * `ScanService.runScan` (ADR-6 mutex with key `${orgId}:${jurisdiction}`).
  *
  * tsx + NestJS DI requires explicit `@Inject(TOKEN)` (foot-gun #667).
  */
@@ -24,6 +27,13 @@ import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { SCAN_SERVICE } from './tokens.js';
 import { ScanService } from './scan.service.js';
 import { shouldScanNow } from './utils/cadence.helper.js';
+
+/**
+ * Single source of truth for jurisdictions this scanner can process.
+ * MVP-12: AR only. MVP-13 will add MX, PE, BR, CL, CO, UY.
+ */
+export const SUPPORTED_JURISDICTIONS = ['AR'] as const;
+export type SupportedJurisdiction = (typeof SUPPORTED_JURISDICTIONS)[number];
 
 /**
  * Soft warning threshold for tick latency. A tick that exceeds 30 minutes
@@ -43,10 +53,10 @@ export class ScanSchedulerService {
 
   /**
    * Hourly tick (UTC). Hour granularity is the coarsest cadence that still
-   * honors `Settings.scanHour ∈ 0..23`. Per-org TZ is MVP-12.
+   * honors `Settings.scanHour ∈ 0..23`.
    *
    * Single-replica assumption MVP-5: a second replica would double-tick.
-   * Per-org mutex (ADR-6) limits damage to a brief window before settling.
+   * Per-org:jurisdiction mutex (ADR-6) limits damage to a brief window.
    */
   @Cron(CronExpression.EVERY_HOUR, { name: 'scanner-global', timeZone: 'UTC' })
   async tick(): Promise<void> {
@@ -66,7 +76,15 @@ export class ScanSchedulerService {
       const orgs = await this.prisma.organization.findMany({
         select: {
           id: true,
-          settings: { select: { scanSchedule: true, scanDay: true, scanHour: true } },
+          settings: {
+            select: {
+              scanSchedule: true,
+              scanDay: true,
+              scanDayOfMonth: true,
+              scanHour: true,
+              jurisdictions: true,
+            },
+          },
         },
       });
 
@@ -74,18 +92,44 @@ export class ScanSchedulerService {
         evaluated += 1;
         // Never lazy-create Settings here — owned by R-Settings-Get-Lazy-Create.
         if (!org.settings) continue;
+
+        // Parse jurisdictions — stored as JSON in the DB.
+        let jurisdictions: string[];
+        try {
+          const raw = org.settings.jurisdictions;
+          const parsed = Array.isArray(raw) ? raw : JSON.parse(raw as string);
+          jurisdictions = parsed as string[];
+        } catch {
+          jurisdictions = [];
+        }
+
+        if (jurisdictions.length === 0) {
+          this.logger.warn(`runTick: org=${org.id} has empty jurisdictions — skipping`);
+          continue;
+        }
+
         if (!shouldScanNow(org.settings, now)) continue;
 
-        dispatched += 1;
-        // Fire-and-forget. Per-org mutex inside runScan dedups vs concurrent
-        // manual trigger; logger.error inside runScan handles observability.
-        this.scan.runScan(org.id).catch((err) => {
-          this.logger.error(
-            `runScan(${org.id}) rejected from scheduler tick: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        });
+        for (const jurisdiction of jurisdictions) {
+          if (!(SUPPORTED_JURISDICTIONS as readonly string[]).includes(jurisdiction)) {
+            this.logger.warn(
+              `runTick: org=${org.id} jurisdiction=${jurisdiction} is not supported — skipping`,
+            );
+            continue;
+          }
+
+          dispatched += 1;
+          // Fire-and-forget. Per-org:jurisdiction mutex inside runScan dedups
+          // vs concurrent manual trigger; logger.error inside runScan handles
+          // observability.
+          this.scan.runScan(org.id, jurisdiction).catch((err) => {
+            this.logger.error(
+              `runScan(${org.id}, ${jurisdiction}) rejected from scheduler tick: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          });
+        }
       }
     } catch (err) {
       this.logger.error(

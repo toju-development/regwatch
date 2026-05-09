@@ -1,14 +1,19 @@
 /**
  * Unit tests for `ScanSchedulerService.runTick`.
  *
- * Spec: sdd/scanner-vertical-ar/spec R-7.
- * Design: sdd/scanner-vertical-ar/design ADR-3 + ADR-4.
+ * Spec: sdd/scanner-vertical-ar/spec R-7;
+ *       sdd/scheduler-per-org/spec R-Scheduler-*.
+ * Design: sdd/scanner-vertical-ar/design ADR-3 + ADR-4;
+ *         sdd/scheduler-per-org/design.
  *
  * Validates:
  *  - orgs without Settings are skipped (no lazy-create).
  *  - cadence filter (`shouldScanNow`) gates dispatch.
  *  - dispatched runScan calls are fire-and-forget (rejection logged, not thrown).
  *  - prisma.findMany failure does NOT throw out of the tick.
+ *  - orgs with empty jurisdictions → logger.warn + no dispatch.
+ *  - unsupported jurisdictions → logger.warn + no dispatch for that jurisdiction.
+ *  - supported jurisdictions dispatched with correct (orgId, jurisdiction) args.
  */
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,7 +24,13 @@ import type { ScanService } from './scan.service.js';
 
 interface OrgRow {
   id: string;
-  settings: { scanSchedule: string; scanDay: string; scanHour: number } | null;
+  settings: {
+    scanSchedule: string;
+    scanDay: string;
+    scanDayOfMonth?: number | null;
+    scanHour: number;
+    jurisdictions: unknown;
+  } | null;
 }
 
 function makePrisma(orgs: OrgRow[] | Error) {
@@ -32,7 +43,7 @@ function makePrisma(orgs: OrgRow[] | Error) {
   };
 }
 
-function makeScan(impl?: (orgId: string) => Promise<unknown>) {
+function makeScan(impl?: (orgId: string, jurisdiction: string) => Promise<unknown>) {
   const runScan = vi.fn(impl ?? (() => Promise.resolve({})));
   return { scan: { runScan } as unknown as ScanService, runScan };
 }
@@ -41,18 +52,47 @@ function makeScan(impl?: (orgId: string) => Promise<unknown>) {
 const WED_08 = new Date('2026-04-29T08:00:00Z');
 const WED_09 = new Date('2026-04-29T09:00:00Z');
 
+// AR jurisdiction as JSON array (matches Settings.jurisdictions storage)
+const AR_JURISDICTIONS = JSON.stringify(['AR']);
+
 describe('ScanSchedulerService.runTick', () => {
-  it('dispatches runScan(orgId) only for orgs whose cadence matches now', async () => {
+  it('dispatches runScan(orgId, jurisdiction) only for orgs whose cadence matches now', async () => {
     const orgs: OrgRow[] = [
-      { id: 'org-daily-08', settings: { scanSchedule: 'daily', scanDay: 'mon', scanHour: 8 } },
-      { id: 'org-daily-09', settings: { scanSchedule: 'daily', scanDay: 'mon', scanHour: 9 } },
+      {
+        id: 'org-daily-08',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: AR_JURISDICTIONS,
+        },
+      },
+      {
+        id: 'org-daily-09',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 9,
+          jurisdictions: AR_JURISDICTIONS,
+        },
+      },
       {
         id: 'org-weekly-wed-08',
-        settings: { scanSchedule: 'weekly', scanDay: 'wed', scanHour: 8 },
+        settings: {
+          scanSchedule: 'weekly',
+          scanDay: 'wed',
+          scanHour: 8,
+          jurisdictions: AR_JURISDICTIONS,
+        },
       },
       {
         id: 'org-weekly-mon-08',
-        settings: { scanSchedule: 'weekly', scanDay: 'mon', scanHour: 8 },
+        settings: {
+          scanSchedule: 'weekly',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: AR_JURISDICTIONS,
+        },
       },
     ];
     const { prisma } = makePrisma(orgs);
@@ -66,12 +106,22 @@ describe('ScanSchedulerService.runTick', () => {
     expect(dispatched).not.toContain('org-daily-09');
     expect(dispatched).not.toContain('org-weekly-mon-08');
     expect(runScan).toHaveBeenCalledTimes(2);
+    expect(runScan).toHaveBeenCalledWith('org-daily-08', 'AR');
+    expect(runScan).toHaveBeenCalledWith('org-weekly-wed-08', 'AR');
   });
 
   it('skips orgs without a Settings row (no lazy-create here)', async () => {
     const orgs: OrgRow[] = [
       { id: 'org-no-settings', settings: null },
-      { id: 'org-with-settings', settings: { scanSchedule: 'daily', scanDay: 'mon', scanHour: 8 } },
+      {
+        id: 'org-with-settings',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: AR_JURISDICTIONS,
+        },
+      },
     ];
     const { prisma } = makePrisma(orgs);
     const { scan, runScan } = makeScan();
@@ -80,7 +130,7 @@ describe('ScanSchedulerService.runTick', () => {
     await svc.runTick(WED_08);
 
     expect(runScan).toHaveBeenCalledTimes(1);
-    expect(runScan).toHaveBeenCalledWith('org-with-settings');
+    expect(runScan).toHaveBeenCalledWith('org-with-settings', 'AR');
   });
 
   it('does NOT throw when prisma.findMany rejects (logged, swallowed)', async () => {
@@ -94,7 +144,15 @@ describe('ScanSchedulerService.runTick', () => {
 
   it('does NOT throw when an individual runScan rejects (fire-and-forget)', async () => {
     const orgs: OrgRow[] = [
-      { id: 'org-1', settings: { scanSchedule: 'daily', scanDay: 'mon', scanHour: 8 } },
+      {
+        id: 'org-1',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: AR_JURISDICTIONS,
+        },
+      },
     ];
     const { prisma } = makePrisma(orgs);
     const { scan, runScan } = makeScan(() => Promise.reject(new Error('LLM 500')));
@@ -109,7 +167,15 @@ describe('ScanSchedulerService.runTick', () => {
 
   it('dispatches nothing when no orgs match cadence', async () => {
     const orgs: OrgRow[] = [
-      { id: 'org-1', settings: { scanSchedule: 'daily', scanDay: 'mon', scanHour: 8 } },
+      {
+        id: 'org-1',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: AR_JURISDICTIONS,
+        },
+      },
     ];
     const { prisma } = makePrisma(orgs);
     const { scan, runScan } = makeScan();
@@ -118,5 +184,76 @@ describe('ScanSchedulerService.runTick', () => {
     await svc.runTick(WED_09); // hour gate fails (08 !== 09)
 
     expect(runScan).not.toHaveBeenCalled();
+  });
+
+  it('skips org with empty jurisdictions and emits logger.warn', async () => {
+    const orgs: OrgRow[] = [
+      {
+        id: 'org-empty-jur',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: JSON.stringify([]),
+        },
+      },
+    ];
+    const { prisma } = makePrisma(orgs);
+    const { scan, runScan } = makeScan();
+
+    const svc = new ScanSchedulerService(prisma, scan);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warnSpy = vi.spyOn((svc as any).logger, 'warn');
+    await svc.runTick(WED_08);
+
+    expect(runScan).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('org-empty-jur'));
+  });
+
+  it('dispatches AR and warns for unsupported MX', async () => {
+    const orgs: OrgRow[] = [
+      {
+        id: 'org-ar-mx',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: JSON.stringify(['AR', 'MX']),
+        },
+      },
+    ];
+    const { prisma } = makePrisma(orgs);
+    const { scan, runScan } = makeScan();
+
+    const svc = new ScanSchedulerService(prisma, scan);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warnSpy = vi.spyOn((svc as any).logger, 'warn');
+    await svc.runTick(WED_08);
+
+    expect(runScan).toHaveBeenCalledTimes(1);
+    expect(runScan).toHaveBeenCalledWith('org-ar-mx', 'AR');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('MX'));
+  });
+
+  it('dispatches once per supported jurisdiction when cadence matches', async () => {
+    const orgs: OrgRow[] = [
+      {
+        id: 'org-ar',
+        settings: {
+          scanSchedule: 'daily',
+          scanDay: 'mon',
+          scanHour: 8,
+          jurisdictions: JSON.stringify(['AR']),
+        },
+      },
+    ];
+    const { prisma } = makePrisma(orgs);
+    const { scan, runScan } = makeScan();
+
+    const svc = new ScanSchedulerService(prisma, scan);
+    await svc.runTick(WED_08);
+
+    expect(runScan).toHaveBeenCalledTimes(1);
+    expect(runScan).toHaveBeenCalledWith('org-ar', 'AR');
   });
 });

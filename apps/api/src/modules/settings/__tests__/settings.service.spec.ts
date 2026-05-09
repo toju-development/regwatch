@@ -61,6 +61,7 @@ function makeSettingsRow(overrides: Partial<Settings> = {}): Settings {
     outputLanguage: null,
     lastSkippedCapAt: null,
     onboardingCompletedAt: null,
+    scanDayOfMonth: null,
     ...overrides,
   };
 }

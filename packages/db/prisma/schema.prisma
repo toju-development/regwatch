@@ -240,6 +240,11 @@ model Settings {
   // No backfill — existing rows keep NULL (no real users pre-MVP-11).
   onboardingCompletedAt DateTime?
 
+  // MVP-12 (migration #15): day-of-month (1-28) for `monthly` cadence.
+  // Nullable + DEFAULT 1 — additive, no backfill needed.
+  // `scanDay` retains day-of-week semantics and is NOT repurposed for monthly.
+  scanDayOfMonth Int? @default(1)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

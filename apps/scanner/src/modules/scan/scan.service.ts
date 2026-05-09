@@ -112,16 +112,19 @@ export class ScanService {
    *      listener cannot reverse a successful persist — D13 mirror).
    */
   async runScan(organizationId: string, jurisdiction = 'AR'): Promise<ScanRunResult> {
-    const inFlight = this.orgMutex.get(organizationId);
+    const mutexKey = `${organizationId}:${jurisdiction}`;
+    const inFlight = this.orgMutex.get(mutexKey);
     if (inFlight) {
-      this.logger.debug(`runScan(${organizationId}) deduped — awaiting in-flight promise (ADR-6)`);
+      this.logger.debug(
+        `runScan(${organizationId}, ${jurisdiction}) deduped — awaiting in-flight promise (ADR-6)`,
+      );
       return inFlight;
     }
 
     const promise = this.runScanInner(organizationId, jurisdiction).finally(() => {
-      this.orgMutex.delete(organizationId);
+      this.orgMutex.delete(mutexKey);
     });
-    this.orgMutex.set(organizationId, promise);
+    this.orgMutex.set(mutexKey, promise);
     return promise;
   }
 

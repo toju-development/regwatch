@@ -45,7 +45,7 @@ export const SettingsJurisdictionsSchema = z
   });
 
 /** Cadence enum — TS-only string (per design D3, no Postgres enum). */
-export const ScanScheduleSchema = z.enum(['daily', 'weekly', 'custom']);
+export const ScanScheduleSchema = z.enum(['daily', 'weekly', 'custom', 'monthly']);
 export type ScanSchedule = z.infer<typeof ScanScheduleSchema>;
 
 /** `mon|tue|...|sun` or CSV thereof. Empty string rejected. */
@@ -68,6 +68,7 @@ export const ScanHourSchema = z.number().int().min(0).max(23);
  *    relaxed in future).
  *  - DAILY  → `scanDay` is ignored at the service layer; we accept any valid
  *    string here and normalise on save (per design §6 inline note).
+ *  - MONTHLY → `scanDayOfMonth` (1-28) governs; `scanDay` is ignored.
  */
 export const UpdateSettingsSchema = z
   .object({
@@ -75,6 +76,8 @@ export const UpdateSettingsSchema = z
     scanSchedule: ScanScheduleSchema,
     scanDay: ScanDaySchema,
     scanHour: ScanHourSchema,
+    /** Day-of-month for `monthly` cadence. 1-28; defaults to 1 if absent. */
+    scanDayOfMonth: z.number().int().min(1).max(28).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.scanSchedule === 'weekly' && v.scanDay.includes(',')) {
