@@ -140,6 +140,7 @@ export class PrismaSettingsRepo implements SettingsRepo {
       scanSchedule: payload.scanSchedule,
       scanDay: payload.scanDay,
       scanHour: payload.scanHour,
+      scanDayOfMonth: payload.scanDayOfMonth ?? 1,
     };
     // Upsert (not update) so a standalone PUT — without a preceding GET —
     // lazily creates the row instead of throwing P2025. The unique index

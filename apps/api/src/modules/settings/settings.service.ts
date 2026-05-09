@@ -108,6 +108,7 @@ export class SettingsService {
       scanSchedule: saved.scanSchedule as SettingsUpdatedEvent['scanSchedule'],
       scanDay: saved.scanDay,
       scanHour: saved.scanHour,
+      scanDayOfMonth: saved.scanDayOfMonth ?? null,
       updatedAt: saved.updatedAt.toISOString(),
     };
     try {

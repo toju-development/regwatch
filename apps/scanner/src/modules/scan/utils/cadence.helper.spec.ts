@@ -72,6 +72,66 @@ describe('shouldScanNow — custom (CSV)', () => {
   });
 });
 
+describe('shouldScanNow — monthly', () => {
+  // 2026-06-15 is the 15th of the month. Use these anchors.
+  const MON_15_2026_06_15_08 = new Date('2026-06-15T08:00:00Z'); // day=15, hour=8
+  const MON_15_2026_06_14_08 = new Date('2026-06-14T08:00:00Z'); // day=14, hour=8 (wrong day)
+  const MON_15_2026_06_15_09 = new Date('2026-06-15T09:00:00Z'); // day=15, hour=9 (wrong hour)
+
+  it('fires when UTC day-of-month === scanDayOfMonth AND hour matches', () => {
+    const s: CadenceSettings = {
+      scanSchedule: 'monthly',
+      scanDay: 'mon',
+      scanHour: 8,
+      scanDayOfMonth: 15,
+    };
+    expect(shouldScanNow(s, MON_15_2026_06_15_08)).toBe(true);
+  });
+
+  it('does NOT fire on wrong day (day=14 but scanDayOfMonth=15)', () => {
+    const s: CadenceSettings = {
+      scanSchedule: 'monthly',
+      scanDay: 'mon',
+      scanHour: 8,
+      scanDayOfMonth: 15,
+    };
+    expect(shouldScanNow(s, MON_15_2026_06_14_08)).toBe(false);
+  });
+
+  it('does NOT fire on wrong hour (hour=9 but scanHour=8)', () => {
+    const s: CadenceSettings = {
+      scanSchedule: 'monthly',
+      scanDay: 'mon',
+      scanHour: 8,
+      scanDayOfMonth: 15,
+    };
+    expect(shouldScanNow(s, MON_15_2026_06_15_09)).toBe(false);
+  });
+
+  it('defaults scanDayOfMonth to 1 when absent (fires on day 1 of month)', () => {
+    const first = new Date('2026-06-01T08:00:00Z'); // day=1
+    const s: CadenceSettings = { scanSchedule: 'monthly', scanDay: 'mon', scanHour: 8 };
+    expect(shouldScanNow(s, first)).toBe(true);
+  });
+
+  it('defaults scanDayOfMonth to 1 when null (fires on day 1 of month)', () => {
+    const first = new Date('2026-06-01T08:00:00Z');
+    const s: CadenceSettings = {
+      scanSchedule: 'monthly',
+      scanDay: 'mon',
+      scanHour: 8,
+      scanDayOfMonth: null,
+    };
+    expect(shouldScanNow(s, first)).toBe(true);
+  });
+
+  it('does NOT fire on day 2 when scanDayOfMonth defaults to 1', () => {
+    const second = new Date('2026-06-02T08:00:00Z');
+    const s: CadenceSettings = { scanSchedule: 'monthly', scanDay: 'mon', scanHour: 8 };
+    expect(shouldScanNow(s, second)).toBe(false);
+  });
+});
+
 describe('shouldScanNow — unknown schedule (defensive)', () => {
   it('returns false for an unknown scanSchedule value', () => {
     const s: CadenceSettings = { scanSchedule: 'BOGUS', scanDay: 'mon', scanHour: 8 };

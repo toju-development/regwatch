@@ -412,6 +412,84 @@ describe('ScanService.runScan — B4 per-org mutex (ADR-6 dedup)', () => {
     expect(rootAgent.run).toHaveBeenCalledTimes(2);
   });
 
+  it('concurrent same-org DIFFERENT-jurisdiction scans acquire independent locks (both run)', async () => {
+    // Both AR and MX should run independently — no dedup across jurisdictions.
+    let resolveAR!: (v: unknown) => void;
+    let resolveMX!: (v: unknown) => void;
+    const arDeferred = new Promise<unknown>((r) => {
+      resolveAR = r;
+    });
+    const mxDeferred = new Promise<unknown>((r) => {
+      resolveMX = r;
+    });
+
+    const runMock = vi
+      .fn()
+      .mockImplementationOnce(() => arDeferred) // first call (AR)
+      .mockImplementationOnce(() => mxDeferred); // second call (MX)
+
+    const rootAgent: RootAgent = { run: runMock };
+    const fakes = makeFakes();
+    fakes.scanLogCreate
+      .mockResolvedValueOnce({ id: 'sl-ar', completedAt: new Date() })
+      .mockResolvedValueOnce({ id: 'sl-mx', completedAt: new Date() });
+    fakes.alertCreateMany.mockResolvedValue({ count: 0 });
+
+    const { svc } = makeService(rootAgent, fakes.prisma, fakes.usage);
+
+    // Fire both in parallel — different jurisdictions
+    const pAR = svc.runScan('org-1', 'AR');
+    const pMX = svc.runScan('org-1', 'MX');
+
+    await Promise.resolve();
+    // Both must have triggered an LLM call (no shared mutex)
+    expect(runMock).toHaveBeenCalledTimes(2);
+
+    const agentResult = {
+      jurisdiction: 'AR',
+      findings: [],
+      usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
+    };
+    resolveAR(agentResult);
+    resolveMX({ ...agentResult, jurisdiction: 'MX' });
+
+    const [rAR, rMX] = await Promise.all([pAR, pMX]);
+    // Results must be independent (different promise objects)
+    expect(rAR).not.toBe(rMX);
+  });
+
+  it('concurrent same-org SAME-jurisdiction still deduplicates (existing contract preserved)', async () => {
+    let resolveAgent!: (v: unknown) => void;
+    const deferred = new Promise<unknown>((r) => {
+      resolveAgent = r;
+    });
+    const runMock = vi.fn().mockReturnValue(deferred);
+    const rootAgent: RootAgent = { run: runMock };
+
+    const fakes = makeFakes();
+    fakes.scanLogCreate.mockResolvedValue({ id: 'sl-dup', completedAt: new Date() });
+    fakes.alertCreateMany.mockResolvedValue({ count: 0 });
+
+    const { svc } = makeService(rootAgent, fakes.prisma, fakes.usage);
+
+    const p1 = svc.runScan('org-1', 'AR');
+    const p2 = svc.runScan('org-1', 'AR');
+
+    await Promise.resolve();
+    // Only ONE LLM call — deduped
+    expect(runMock).toHaveBeenCalledTimes(1);
+
+    resolveAgent({
+      jurisdiction: 'AR',
+      findings: [],
+      usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
+    });
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1).toBe(r2); // same promise
+    expect(runMock).toHaveBeenCalledTimes(1);
+  });
+
   it('releases the mutex even when the inner scan throws', async () => {
     const rootAgent: RootAgent = { run: vi.fn() };
     const fakes = makeFakes();
