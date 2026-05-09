@@ -1,18 +1,23 @@
 /**
- * NotificationsListenerService — handles alert lifecycle events and posts
- * Slack notifications via the `NotificationPort`.
+ * NotificationsListenerService — handles alert lifecycle events and fans out
+ * Slack notifications to all matching channels via `Promise.allSettled`.
+ *
+ * sdd/segmented-distribution (MVP-14):
+ *   - Multi-channel fan-out: `findActiveChannels()` replaces `findUnique`.
+ *   - `effectiveJurisdiction` = alert.jurisdiction ?? scanLog?.jurisdiction ?? null.
+ *   - Channel filter: ch.jurisdictions.length === 0 (catch-all) OR includes effectiveJurisdiction.
+ *   - DISTRIBUTED gate (onAlertStatusChanged only): emits DISTRIBUTED status iff
+ *     `results.some(r => r.status === 'fulfilled')`.
  *
  * sdd/notify-slack/design D5: dedup guard for CONCLUDED.
  * sdd/notify-slack/spec: fire-and-forget, catch + log, never rethrow.
- *
- * Context resolution (D7): single composite DB query per event resolves
- * alert, actor, assignee, org, and Slack channel row.
  *
  * Foot-gun #667: explicit @Inject tokens everywhere.
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { PrismaClient } from '@regwatch/db/client';
 import type {
   NotificationPort,
@@ -26,8 +31,32 @@ import {
   ALERT_STATUS_CHANGED_EVENT,
   ALERT_ASSIGNED_EVENT,
 } from '@regwatch/types';
-import { NOTIFICATIONS_PRISMA_TOKEN, NOTIFICATION_PORT_TOKEN } from './tokens.js';
+import {
+  NOTIFICATIONS_PRISMA_TOKEN,
+  NOTIFICATION_PORT_TOKEN,
+  NOTIFICATIONS_REPO_TOKEN,
+} from './tokens.js';
+import type { NotificationsRepo } from './notifications.repository.js';
 import { env } from '../../env.js';
+
+// ─── Internal types ────────────────────────────────────────────────────────────
+
+interface SharedCtx {
+  alertId: string;
+  alertTitle: string;
+  alertUrl: string;
+  orgName: string;
+  actorName: string;
+  assigneeName: string | null;
+  effectiveJurisdiction: string | null;
+}
+
+type ActiveChannel = Pick<
+  import('./notifications.repository.js').NotificationChannelRow,
+  'id' | 'webhookUrl' | 'channelName' | 'jurisdictions'
+>;
+
+// ─── Service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class NotificationsListenerService {
@@ -36,6 +65,8 @@ export class NotificationsListenerService {
   constructor(
     @Inject(NOTIFICATIONS_PRISMA_TOKEN) private readonly prisma: PrismaClient,
     @Inject(NOTIFICATION_PORT_TOKEN) private readonly port: NotificationPort,
+    @Inject(NOTIFICATIONS_REPO_TOKEN) private readonly repo: NotificationsRepo,
+    @Inject(EventEmitter2) private readonly events: EventEmitter2,
   ) {}
 
   // ─── alert.concluded ────────────────────────────────────────────────────────
@@ -43,15 +74,17 @@ export class NotificationsListenerService {
   @OnEvent(ALERT_CONCLUDED_EVENT, { async: true })
   async onAlertConcluded(payload: AlertConcludedEvent): Promise<void> {
     try {
-      const ctx = await this.resolveContext(
+      const { shared, channels } = await this.resolveContext(
         payload.alertId,
         payload.organizationId,
         payload.actorId,
         null,
       );
-      if (!ctx) return;
+      if (!shared || channels.length === 0) return;
 
-      await this.port.sendAlertConcluded(payload, ctx);
+      await Promise.allSettled(
+        channels.map((ch) => this.port.sendAlertConcluded(payload, this.buildCtx(shared, ch))),
+      );
     } catch (err) {
       this.logger.error({
         event: ALERT_CONCLUDED_EVENT,
@@ -66,19 +99,28 @@ export class NotificationsListenerService {
 
   @OnEvent(ALERT_STATUS_CHANGED_EVENT, { async: true })
   async onAlertStatusChanged(payload: AlertStatusChangedEvent): Promise<void> {
-    // D5: dedup guard — alert.concluded is the canonical message for CONCLUDED transitions
-    if (payload.toStatus === 'CONCLUDED') return;
+    // D5: dedup guard — alert.concluded is the canonical message for CONCLUDED transitions.
+    // Also skip DISTRIBUTED to prevent recursion (listener emits it below).
+    if (payload.toStatus === 'CONCLUDED' || payload.toStatus === 'DISTRIBUTED') return;
 
     try {
-      const ctx = await this.resolveContext(
+      const { shared, channels } = await this.resolveContext(
         payload.alertId,
         payload.organizationId,
         payload.actorId,
         null,
       );
-      if (!ctx) return;
+      if (!shared) return;
+      if (channels.length === 0) return; // zero matched → DISTRIBUTED not emitted
 
-      await this.port.sendAlertStatusChanged(payload, ctx);
+      const results = await Promise.allSettled(
+        channels.map((ch) => this.port.sendAlertStatusChanged(payload, this.buildCtx(shared, ch))),
+      );
+
+      // DISTRIBUTED gate: emit iff at least one channel call fulfilled.
+      if (results.some((r) => r.status === 'fulfilled')) {
+        await this.emitDistributed(payload.alertId, payload.organizationId, payload.actorId);
+      }
     } catch (err) {
       this.logger.error({
         event: ALERT_STATUS_CHANGED_EVENT,
@@ -95,15 +137,17 @@ export class NotificationsListenerService {
   @OnEvent(ALERT_ASSIGNED_EVENT, { async: true })
   async onAlertAssigned(payload: AlertAssignedEvent): Promise<void> {
     try {
-      const ctx = await this.resolveContext(
+      const { shared, channels } = await this.resolveContext(
         payload.alertId,
         payload.organizationId,
         payload.actorId,
         payload.assigneeId,
       );
-      if (!ctx) return;
+      if (!shared || channels.length === 0) return;
 
-      await this.port.sendAlertAssigned(payload, ctx);
+      await Promise.allSettled(
+        channels.map((ch) => this.port.sendAlertAssigned(payload, this.buildCtx(shared, ch))),
+      );
     } catch (err) {
       this.logger.error({
         event: ALERT_ASSIGNED_EVENT,
@@ -118,24 +162,25 @@ export class NotificationsListenerService {
   // ─── Context resolution ──────────────────────────────────────────────────────
 
   /**
-   * Resolves all enrichment data via parallel DB queries.
-   * Returns `null` when no active Slack channel is configured for the org —
-   * callers MUST return early without invoking the port.
+   * Resolves shared enrichment data and matched channels in parallel.
+   * Returns `{ shared: null, channels: [] }` when alert/org is not found.
+   * Channel list is already filtered by effectiveJurisdiction catch-all rule.
    */
   private async resolveContext(
     alertId: string,
     organizationId: string,
     actorId: string,
     assigneeId: string | null,
-  ): Promise<NotificationContext | null> {
-    const [channel, alert, actor, assignee, org] = await Promise.all([
-      this.prisma.notificationChannel.findUnique({
-        where: { organizationId_provider: { organizationId, provider: 'SLACK' } },
-        select: { webhookUrl: true, isActive: true },
-      }),
+  ): Promise<{ shared: SharedCtx | null; channels: ActiveChannel[] }> {
+    const [alert, actor, assignee, org, rawChannels] = await Promise.all([
       this.prisma.alert.findUnique({
         where: { id: alertId },
-        select: { title: true, sourceUrl: true },
+        select: {
+          title: true,
+          sourceUrl: true,
+          jurisdiction: true,
+          scanLog: { select: { jurisdiction: true } },
+        },
       }),
       this.prisma.user.findUnique({
         where: { id: actorId },
@@ -151,11 +196,21 @@ export class NotificationsListenerService {
         where: { id: organizationId },
         select: { name: true },
       }),
+      this.repo.findActiveChannels(organizationId, 'SLACK'),
     ]);
 
-    // No channel configured or inactive → skip silently
-    if (!channel || !channel.isActive) return null;
-    if (!alert || !org) return null;
+    if (!alert || !org) return { shared: null, channels: [] };
+
+    // effectiveJurisdiction: alert.jurisdiction ?? scanLog?.jurisdiction ?? null
+    const effectiveJurisdiction: string | null =
+      alert.jurisdiction ?? alert.scanLog?.jurisdiction ?? null;
+
+    // Channel filter: catch-all (empty array) OR explicit allowlist match.
+    const channels = rawChannels.filter(
+      (ch) =>
+        ch.jurisdictions.length === 0 ||
+        (effectiveJurisdiction !== null && ch.jurisdictions.includes(effectiveJurisdiction)),
+    );
 
     const rawTitle = alert.title ?? alert.sourceUrl ?? alertId;
     const alertTitle = rawTitle.length > 120 ? rawTitle.slice(0, 117) + '...' : rawTitle;
@@ -164,13 +219,69 @@ export class NotificationsListenerService {
     const assigneeName = assignee ? (assignee.name ?? assignee.email ?? assigneeId) : null;
 
     return {
-      alertId,
-      alertTitle,
-      alertUrl,
-      orgName: org.name,
-      actorName,
-      assigneeName,
-      webhookUrl: channel.webhookUrl,
+      shared: {
+        alertId,
+        alertTitle,
+        alertUrl,
+        orgName: org.name,
+        actorName,
+        assigneeName,
+        effectiveJurisdiction,
+      },
+      channels,
     };
+  }
+
+  /** Builds per-channel NotificationContext from shared data. */
+  private buildCtx(shared: SharedCtx, ch: ActiveChannel): NotificationContext {
+    return {
+      alertId: shared.alertId,
+      alertTitle: shared.alertTitle,
+      alertUrl: shared.alertUrl,
+      orgName: shared.orgName,
+      actorName: shared.actorName,
+      assigneeName: shared.assigneeName,
+      webhookUrl: ch.webhookUrl,
+    };
+  }
+
+  /**
+   * Updates alert.status to DISTRIBUTED in the DB and emits the status_changed event.
+   * System-only — DISTRIBUTED is never set by human actors (schema comment, MVP-14).
+   */
+  private async emitDistributed(
+    alertId: string,
+    organizationId: string,
+    actorId: string,
+  ): Promise<void> {
+    try {
+      const alert = await this.prisma.alert.findUnique({
+        where: { id: alertId },
+        select: { status: true },
+      });
+      if (!alert || alert.status === 'DISTRIBUTED') return; // already distributed
+
+      await this.prisma.alert.update({
+        where: { id: alertId },
+        data: { status: 'DISTRIBUTED' },
+      });
+
+      this.events.emit(ALERT_STATUS_CHANGED_EVENT, {
+        alertId,
+        organizationId,
+        actorId,
+        fromStatus: alert.status,
+        toStatus: 'DISTRIBUTED' as const,
+        note: null,
+        changedAt: new Date().toISOString(),
+      } satisfies AlertStatusChangedEvent);
+    } catch (err) {
+      this.logger.error({
+        msg: 'Failed to emit DISTRIBUTED status',
+        alertId,
+        organizationId,
+        error: (err as Error)?.message ?? String(err),
+      });
+    }
   }
 }

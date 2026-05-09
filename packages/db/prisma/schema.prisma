@@ -445,9 +445,16 @@ enum NotificationProvider {
   SLACK
 }
 
-// One row per (org, provider) pair — unique constraint prevents duplicate
-// channels. webhookUrl stored plaintext at MVP; encryption lands in POST-6.
-// isActive toggle lets orgs pause without deleting the webhook URL.
+// Multiple rows per (org, provider) are allowed — MVP-14 drops the unique
+// constraint to support segmented distribution (multiple Slack channels per org,
+// each filtered by jurisdiction). webhookUrl stored plaintext at MVP; encryption
+// lands in POST-6. isActive toggle lets orgs pause without deleting the webhook URL.
+//
+// `jurisdictions String[]` (Postgres native array, default []) — MVP-14
+// (sdd/segmented-distribution, migration #14):
+//   [] = catch-all (receives all alerts regardless of jurisdiction).
+//   non-empty = allowlist; channel only receives alerts whose effectiveJurisdiction
+//   is in the array.
 model NotificationChannel {
   id             String               @id @default(cuid())
   organizationId String
@@ -455,12 +462,14 @@ model NotificationChannel {
   webhookUrl     String
   channelName    String?
   isActive       Boolean              @default(true)
+  /// MVP-14: jurisdiction allowlist. [] = catch-all. Non-empty = filtered.
+  jurisdictions  String[]             @default([])
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, provider])
   @@index([organizationId])
+  @@index([organizationId, provider])
 }
 
 // ─── Alert collaboration domain (sdd/alert-collaboration — MVP-8, migration #12) ─
