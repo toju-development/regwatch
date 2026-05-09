@@ -11,6 +11,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { AR_SOURCES } from '../sources/ar.js';
+import { BR_SOURCES } from '../sources/br.js';
 import {
   buildPrompt,
   createJurisdictionScannerFactory,
@@ -56,6 +57,29 @@ describe('buildPrompt', () => {
   it('forbids organizationId in the system instruction (R-3)', () => {
     const { systemInstruction } = buildPrompt('AR', AR_SOURCES);
     expect(systemInstruction).toMatch(/NEVER include an `organizationId`/);
+  });
+
+  it('generates correct enum for BR — no AR literals leak through', () => {
+    const { systemInstruction } = buildPrompt('BR', BR_SOURCES);
+    // Must contain all BR source regulators
+    for (const s of BR_SOURCES) {
+      expect(systemInstruction).toContain(`"${s.regulator}"`);
+    }
+    // Must NOT contain any AR-specific regulator names
+    expect(systemInstruction).not.toContain('BCRA_COMUNICADOS_A');
+    expect(systemInstruction).not.toContain('BCRA_COMUNICADOS_B');
+    expect(systemInstruction).not.toContain('BCRA_COMUNICADOS_C');
+    expect(systemInstruction).not.toContain('CNV_RESOLUCIONES_GENERALES');
+  });
+
+  it('generates correct enum for AR — regression guard', () => {
+    const { systemInstruction } = buildPrompt('AR', AR_SOURCES);
+    expect(systemInstruction).toContain('"BCRA_COMUNICADOS_A"');
+    expect(systemInstruction).toContain('"BCRA_COMUNICADOS_B"');
+    expect(systemInstruction).toContain('"BCRA_COMUNICADOS_C"');
+    expect(systemInstruction).toContain('"CNV_RESOLUCIONES_GENERALES"');
+    // Must NOT contain any BR-specific regulator names
+    expect(systemInstruction).not.toContain('BCB_CIRCULARES');
   });
 });
 
