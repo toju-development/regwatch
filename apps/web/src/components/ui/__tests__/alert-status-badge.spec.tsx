@@ -27,7 +27,7 @@ const ALL_STATUSES: AlertStatus[] = [
 describe('AlertStatusBadge', () => {
   it.each(ALL_STATUSES)('%s: renders the status label', (status) => {
     render(<AlertStatusBadge status={status} />);
-    expect(screen.getByText(status)).toBeDefined();
+    expect(screen.getByText(status)).toBeInTheDocument();
   });
 
   it.each(ALL_STATUSES)('%s: applies the expected CSS classes', (status) => {

@@ -79,7 +79,7 @@ function makeRepo(overrides: Partial<AlertsRepo> = {}): AlertsRepo {
     findParentComment: vi.fn().mockResolvedValue(null),
     deleteComment: vi.fn().mockResolvedValue(undefined),
     findEvents: vi.fn().mockResolvedValue([]),
-    statsForOrg: vi.fn().mockResolvedValue({ total: 0, byStatus: {} }),
+    statsForOrg: vi.fn().mockResolvedValue({ total: 0, byStatus: {}, bySeverity: {} }),
     ...overrides,
   } as unknown as AlertsRepo;
 }
@@ -347,6 +347,7 @@ describe('AlertsService.getStats', () => {
         DISTRIBUTED: 1,
         ARCHIVED: 0,
       },
+      bySeverity: {},
     };
     const repo = makeRepo({ statsForOrg: vi.fn().mockResolvedValue(stats) } as Partial<AlertsRepo>);
     const service = makeService(repo);
@@ -354,7 +355,7 @@ describe('AlertsService.getStats', () => {
     const result = await service.getStats('org-1');
 
     expect(repo.statsForOrg).toHaveBeenCalledWith('org-1');
-    expect(result).toBe(stats);
+    expect(result).toEqual(stats);
   });
 });
 
