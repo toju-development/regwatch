@@ -53,6 +53,7 @@ function buildController(serviceOverrides: Partial<SettingsService> = {}): {
   const service = {
     getOrCreate: vi.fn(),
     update: vi.fn(),
+    completeOnboarding: vi.fn(),
     ...serviceOverrides,
   } as unknown as SettingsService;
   const controller = new SettingsController(service);
@@ -110,6 +111,7 @@ describe('SettingsController', () => {
           scanDay: 'mon',
           scanHour: 9,
           updatedAt,
+          onboardingCompletedAt: null,
         }),
       });
       const result = await controller.get('org_target', 'org_target');
@@ -122,6 +124,7 @@ describe('SettingsController', () => {
           scanDay: 'mon',
           scanHour: 9,
           updatedAt: updatedAt.toISOString(),
+          onboardingCompletedAt: null,
         },
       });
     });
@@ -144,6 +147,7 @@ describe('SettingsController', () => {
           scanDay: 'mon',
           scanHour: 9,
           updatedAt,
+          onboardingCompletedAt: null,
         }),
       });
       const result = await controller.update('org_target', SAMPLE_USER, 'org_target', SAMPLE_BODY);
@@ -180,6 +184,7 @@ describe('SettingsController', () => {
     const stubService = {
       getOrCreate: vi.fn(),
       update: vi.fn(),
+      completeOnboarding: vi.fn(),
     } as unknown as SettingsService;
     const moduleRef = await Test.createTestingModule({
       controllers: [SettingsController],

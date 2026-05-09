@@ -31,6 +31,8 @@ export interface SettingsDto {
   scanDay: string;
   scanHour: number;
   updatedAt: string;
+  /** ISO-8601 timestamp when onboarding was completed, or null if not yet done. */
+  onboardingCompletedAt: string | null;
 }
 
 /**
@@ -54,5 +56,6 @@ export function toSettingsDto(row: Settings): SettingsDto {
     scanDay: row.scanDay,
     scanHour: row.scanHour,
     updatedAt: row.updatedAt.toISOString(),
+    onboardingCompletedAt: row.onboardingCompletedAt?.toISOString() ?? null,
   };
 }

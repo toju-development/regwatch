@@ -65,6 +65,14 @@ export interface SettingsRepo {
    * (foot-gun #645: unique-index gate, not prior SELECT).
    */
   replace(organizationId: string, payload: UpdateSettingsInput): Promise<Settings>;
+
+  /**
+   * Partial update — sets only `onboardingCompletedAt` and `updatedAt`.
+   * Minimal footprint: does not touch jurisdictions or cadence fields.
+   * Row must already exist (created by `getOrCreate` earlier in the
+   * onboarding flow, which is guaranteed by the `/onboarding` page RSC).
+   */
+  setOnboardingCompleted(organizationId: string, completedAt: Date): Promise<Settings>;
 }
 
 /**
@@ -141,6 +149,13 @@ export class PrismaSettingsRepo implements SettingsRepo {
       where: { organizationId },
       create: { organizationId, ...data },
       update: data,
+    });
+  }
+
+  async setOnboardingCompleted(organizationId: string, completedAt: Date): Promise<Settings> {
+    return this.prisma.settings.update({
+      where: { organizationId },
+      data: { onboardingCompletedAt: completedAt },
     });
   }
 }

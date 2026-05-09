@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { Prisma, PrismaClient, ScanStatus } from '@regwatch/db/client';
+import { ensureOnboardingComplete } from './helpers';
 
 /**
  * E2E coverage for `sdd/scanner-vertical-ar/spec` § R-13-UsageWidget.
@@ -180,6 +181,8 @@ test.describe('R-13-UsageWidget — render variants', () => {
     await fakeGoogleSignIn(page, email);
 
     const org = await postOrgViaProxy(context, `Usage Zero ${Date.now()}`);
+    // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+    await ensureOnboardingComplete(prisma, email);
     await refreshSessionAndExpectMembershipCount(page, 2);
     await switchActiveOrg(context, org.id);
 
@@ -200,6 +203,8 @@ test.describe('R-13-UsageWidget — render variants', () => {
     await fakeGoogleSignIn(page, email);
 
     const org = await postOrgViaProxy(context, `Usage Mid ${Date.now()}`);
+    // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+    await ensureOnboardingComplete(prisma, email);
     await refreshSessionAndExpectMembershipCount(page, 2);
     await switchActiveOrg(context, org.id);
 
@@ -225,6 +230,8 @@ test.describe('R-13-UsageWidget — render variants', () => {
     await fakeGoogleSignIn(page, email);
 
     const org = await postOrgViaProxy(context, `Usage Cap ${Date.now()}`);
+    // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+    await ensureOnboardingComplete(prisma, email);
     await refreshSessionAndExpectMembershipCount(page, 2);
     await switchActiveOrg(context, org.id);
 

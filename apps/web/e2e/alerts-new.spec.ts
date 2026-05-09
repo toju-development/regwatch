@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { PrismaClient } from '@regwatch/db/client';
+import { ensureOnboardingComplete } from './helpers';
 
 /**
  * E2E coverage for `sdd/manual-ingestion/spec` § R-10 (Manual ingestion UI).
@@ -25,6 +27,15 @@ import { expect, test } from '@playwright/test';
 // ---------------------------------------------------------------------------
 // Helpers — same helpers used in members.spec.ts / usage.spec.ts
 // ---------------------------------------------------------------------------
+
+const DEFAULT_DB_URL = 'postgresql://postgres:root@localhost:5432/regwatch_dev?schema=public';
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL ?? DEFAULT_DB_URL } },
+});
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 /** Sign in as a fresh user via the dev fake-google provider. */
 async function signInFakeGoogle(
@@ -54,6 +65,7 @@ test.describe('alerts/new — manual ingestion UI', () => {
       // Sign in so the layout (auth guard) lets us through
       const email = `alerts-new-s2-${Date.now()}@test.local`;
       await signInFakeGoogle(page, email);
+      await ensureOnboardingComplete(prisma, email);
 
       // Navigate to /alerts/new
       await page.goto('/alerts/new');
@@ -79,7 +91,8 @@ test.describe('alerts/new — manual ingestion UI', () => {
     },
   );
 
-  test.skip('S1: valid URL + jurisdiction → submits and redirects to /dashboard', async ({ // is not yet configured for this project. Primary coverage: B4 unit tests. // The API mock approach would need MSW or a test-server setup that // NOTE: Skipped — requires apps/api + apps/scanner running.
+  test.skip('S1: valid URL + jurisdiction → submits and redirects to /dashboard', async ({
+    // is not yet configured for this project. Primary coverage: B4 unit tests. // The API mock approach would need MSW or a test-server setup that // NOTE: Skipped — requires apps/api + apps/scanner running.
     page,
   }) => {
     const email = `alerts-new-s1-${Date.now()}@test.local`;
@@ -121,6 +134,7 @@ test.describe('alerts/new — manual ingestion UI', () => {
     async ({ page }) => {
       const email = `alerts-new-pdf-${Date.now()}@test.local`;
       await signInFakeGoogle(page, email);
+      await ensureOnboardingComplete(prisma, email);
 
       await page.goto('/alerts/new');
       await page.getByTestId('tab-pdf').click();

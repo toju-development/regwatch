@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { PrismaClient, type Role } from '@regwatch/db/client';
+import { ensureOnboardingComplete } from './helpers';
 
 /**
  * E2E coverage for `sdd/org-members/spec` § R-Members-List, R-Membership-Update,
@@ -202,6 +203,9 @@ test.describe('Members management', () => {
 
       // Create the test org via chokepoint → bumps owner.mv → JWT lags by 1.
       const org = await postOrgViaProxy(context, `Members Test ${Date.now()}`);
+      // Mark all org Settings as onboarding-complete so the dashboard layout
+      // redirect guard (MVP-11) does not redirect to /onboarding.
+      await ensureOnboardingComplete(prisma, ownerEmail);
 
       // Seed two viewers directly. mv on these users stays 0 — irrelevant
       // because they never sign in.
@@ -254,11 +258,15 @@ test.describe('Members management', () => {
     async ({ page, context }) => {
       const ownerEmail = uniqueEmail('leaver');
       await fakeGoogleSignIn(page, ownerEmail);
+      // Mark personal org onboarding complete before visiting /dashboard.
+      await ensureOnboardingComplete(prisma, ownerEmail);
 
       const personalOrgId = await readActiveOrgFromDashboard(page);
       expect(personalOrgId).toBeTruthy();
 
       const other = await postOrgViaProxy(context, `Leavable Org ${Date.now()}`);
+      // Mark new org onboarding complete so switching to it doesn't redirect.
+      await ensureOnboardingComplete(prisma, ownerEmail);
 
       // Seed a co-OWNER so the leaver is NOT the last OWNER. Direct write
       // is sufficient because the co-OWNER never signs in here — server
@@ -320,6 +328,10 @@ test.describe('Members management', () => {
         const aEmail = uniqueEmail('admin-a');
         await fakeGoogleSignIn(pageA, aEmail);
         const orgX = await postOrgViaProxy(ctxA, `Cross-Tab Org ${Date.now()}`);
+        // Mark onboarding complete for A (includes OrgX) so the dashboard
+        // redirect guard doesn't fire for either Tab A or Tab B (who will
+        // switch active org to OrgX).
+        await ensureOnboardingComplete(prisma, aEmail);
         await refreshSessionAndExpectMembershipCount(pageA, 2);
 
         // Tab B: pre-seed B's User + Membership(OrgX, VIEWER) BEFORE B signs in.
@@ -349,6 +361,8 @@ test.describe('Members management', () => {
         pageB.on('response', meListener);
 
         await fakeGoogleSignIn(pageB, bEmail);
+        // B's personal org also needs onboarding marked complete.
+        await ensureOnboardingComplete(prisma, bEmail);
         await switchActiveOrg(ctxB, orgX.id);
         await pageB.goto('/dashboard');
         await expect(pageB.getByTestId('dashboard-section')).toBeVisible();
@@ -416,6 +430,8 @@ test.describe('Members management', () => {
       await fakeGoogleSignIn(page, email);
 
       const solo = await postOrgViaProxy(context, `Solo Org ${Date.now()}`);
+      // Mark all org Settings onboarding-complete (personal + solo).
+      await ensureOnboardingComplete(prisma, email);
 
       // No co-OWNER seeded → user is the LAST OWNER → DELETE rejected with 409.
       await refreshSessionAndExpectMembershipCount(page, 2);

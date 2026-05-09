@@ -66,6 +66,13 @@ export interface PreferencesFormProps {
   canEdit: boolean;
   /** Current persisted state; seeds the local React state on mount. */
   initial: PreferencesFormInitial;
+  /**
+   * Optional HTML `id` for the inner `<form>` element. When provided,
+   * an external submit button can target this form via `form="<formId>"`.
+   */
+  formId?: string;
+  /** Called after a successful save. Useful for wizard step advancement. */
+  onSuccess?: () => void;
 }
 
 /**
@@ -108,6 +115,8 @@ export function PreferencesForm({
   orgId,
   canEdit,
   initial,
+  formId,
+  onSuccess,
 }: PreferencesFormProps): React.ReactElement {
   // Index initial jurisdictions by code so we can edit individual rows
   // without reordering. Re-serialised in canonical order on submit.
@@ -193,6 +202,7 @@ export function PreferencesForm({
         return;
       }
       setSuccessMsg('Preferences saved.');
+      onSuccess?.();
     });
   }
 
@@ -200,6 +210,7 @@ export function PreferencesForm({
 
   return (
     <form
+      id={formId}
       onSubmit={handleSubmit}
       className="flex flex-col gap-6"
       data-testid="preferences-form"

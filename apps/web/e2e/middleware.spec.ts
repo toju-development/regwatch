@@ -114,9 +114,9 @@ test.describe('edge middleware', () => {
 
       // Now visit a protected path; middleware must let us through.
       const res = await context.request.get('/dashboard', { maxRedirects: 0 });
-      // No 307 redirect from the middleware. Either the route renders (200)
-      // or returns a 404 (route doesn't exist) — both prove middleware passed.
-      expect(res.status()).not.toBe(307);
+      // The middleware must NOT redirect to /login (unauthenticated).
+      // A redirect to /onboarding (307 from RSC layout) is acceptable —
+      // it proves the middleware passed the request through.
       const location = res.headers()['location'];
       if (location) {
         expect(new URL(location, 'http://localhost:3000').pathname).not.toBe('/login');

@@ -468,6 +468,84 @@ describe.skipIf(!dbAvailable)('SettingsController (HTTP integration)', () => {
       }
     });
 
+    // ------------------------------------------------------------------ //
+    // PATCH /org/:orgId/settings — MVP-11 onboarding completion          //
+    // ------------------------------------------------------------------ //
+
+    // Note: nested inside the PUT describe intentionally — the helper
+    // functions (seed, getJwt, etc.) are shared. A separate top-level
+    // describe would require duplicating them.
+
+    describe('PATCH /org/:orgId/settings — completeOnboarding', () => {
+      const PATCH_BODY = { onboardingCompletedAt: '2026-05-09T10:00:00.000Z' };
+
+      it('OWNER PATCH — 200, DB row has onboardingCompletedAt set', async () => {
+        const { org, actor } = await seed('OWNER');
+        const jwt = await getJwt(actor, org, 'OWNER');
+
+        // Ensure the settings row exists (PATCH uses UPDATE, not upsert).
+        await fetch(`${baseUrl}/org/${org.id}/settings`, {
+          headers: { authorization: `Bearer ${jwt}`, 'x-org-id': org.id },
+        });
+
+        const res = await fetch(`${baseUrl}/org/${org.id}/settings`, {
+          method: 'PATCH',
+          headers: {
+            authorization: `Bearer ${jwt}`,
+            'x-org-id': org.id,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(PATCH_BODY),
+        });
+
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { settings: { onboardingCompletedAt: string | null } };
+        expect(body.settings.onboardingCompletedAt).toBe(PATCH_BODY.onboardingCompletedAt);
+
+        const row = await prisma.settings.findUniqueOrThrow({
+          where: { organizationId: org.id },
+        });
+        expect(row.onboardingCompletedAt?.toISOString()).toBe(PATCH_BODY.onboardingCompletedAt);
+      });
+
+      it.each<[Role]>([['ADMIN'], ['ANALYST'], ['VIEWER']])(
+        'role %s → 403 (OWNER-only endpoint)',
+        async (role) => {
+          const { org, actor } = await seed(role);
+          const jwt = await getJwt(actor, org, role);
+          const res = await fetch(`${baseUrl}/org/${org.id}/settings`, {
+            method: 'PATCH',
+            headers: {
+              authorization: `Bearer ${jwt}`,
+              'x-org-id': org.id,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify(PATCH_BODY),
+          });
+          expect(res.status).toBe(403);
+        },
+      );
+
+      it('invalid body (bad datetime format) → 400', async () => {
+        const { org, actor } = await seed('OWNER');
+        const jwt = await getJwt(actor, org, 'OWNER');
+        // Ensure row exists.
+        await fetch(`${baseUrl}/org/${org.id}/settings`, {
+          headers: { authorization: `Bearer ${jwt}`, 'x-org-id': org.id },
+        });
+        const res = await fetch(`${baseUrl}/org/${org.id}/settings`, {
+          method: 'PATCH',
+          headers: {
+            authorization: `Bearer ${jwt}`,
+            'x-org-id': org.id,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ onboardingCompletedAt: 'not-a-datetime' }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
     it('cascade-on-org-delete (migration #6) — Settings row drops with the org', async () => {
       const { org, actor } = await seed('OWNER');
       const jwt = await getJwt(actor, org, 'OWNER');

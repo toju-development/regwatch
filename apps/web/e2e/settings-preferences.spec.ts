@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { PrismaClient, type Role } from '@regwatch/db/client';
+import { ensureOnboardingComplete } from './helpers';
 
 /**
  * E2E coverage for `sdd/jurisdictions-config/spec` § R-Settings-Preferences-Page.
@@ -188,6 +189,8 @@ test.describe('Settings — Preferences page', () => {
       await fakeGoogleSignIn(page, ownerEmail);
 
       const org = await postOrgViaProxy(context, `Prefs Org ${Date.now()}`);
+      // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+      await ensureOnboardingComplete(prisma, ownerEmail);
       await refreshSessionAndExpectMembershipCount(page, 2);
       await switchActiveOrg(context, org.id);
 
@@ -349,6 +352,8 @@ test.describe('Settings — Preferences page', () => {
       await fakeGoogleSignIn(page, ownerEmail);
 
       const org = await postOrgViaProxy(context, `Validation Org ${Date.now()}`);
+      // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+      await ensureOnboardingComplete(prisma, ownerEmail);
       await refreshSessionAndExpectMembershipCount(page, 2);
       await switchActiveOrg(context, org.id);
 
@@ -450,6 +455,8 @@ test.describe('Settings — Preferences page', () => {
         });
         return (await res.json()) as { id: string; slug: string };
       }, `Cold Org ${Date.now()}`);
+      // Mark all org Settings onboarding-complete (MVP-11 redirect guard).
+      await ensureOnboardingComplete(prisma, ownerEmail);
 
       await refreshSessionAndExpectMembershipCount(page, 2);
       await page.evaluate(async (orgId: string) => {

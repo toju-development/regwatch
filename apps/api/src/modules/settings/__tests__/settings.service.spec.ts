@@ -39,6 +39,7 @@ function makeRepo(overrides: Partial<SettingsRepo> = {}): SettingsRepo {
     findByOrgId: vi.fn(),
     upsertDefault: vi.fn(),
     replace: vi.fn(),
+    setOnboardingCompleted: vi.fn(),
     ...overrides,
   };
 }
@@ -59,6 +60,7 @@ function makeSettingsRow(overrides: Partial<Settings> = {}): Settings {
     updatedAt: FIXED_NOW,
     outputLanguage: null,
     lastSkippedCapAt: null,
+    onboardingCompletedAt: null,
     ...overrides,
   };
 }
@@ -190,6 +192,35 @@ describe('SettingsService', () => {
       expect(parsed.data?.organizationId).toBe('org_1');
       expect(parsed.data?.actorId).toBe('user_actor');
       expect(parsed.data?.updatedAt).toBe(updatedAt.toISOString());
+    });
+  });
+
+  describe('completeOnboarding', () => {
+    it('delegates to repo.setOnboardingCompleted and returns the updated row', async () => {
+      // Spec: "PUT marks onboarding complete" — service is a thin delegate.
+      // Emitter MUST NOT fire (no settings.updated event for PATCH).
+      const completedAt = new Date('2026-05-09T10:00:00.000Z');
+      const updated = makeSettingsRow({ onboardingCompletedAt: completedAt });
+      const setOnboardingCompleted = vi.fn().mockResolvedValue(updated);
+      const repo = makeRepo({ setOnboardingCompleted });
+      const events = makeEvents();
+      const svc = new SettingsService(repo, events);
+
+      const result = await svc.completeOnboarding('org_1', completedAt);
+
+      expect(result).toBe(updated);
+      expect(setOnboardingCompleted).toHaveBeenCalledWith('org_1', completedAt);
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('propagates repo errors without emitting', async () => {
+      const boom = new Error('db error');
+      const repo = makeRepo({ setOnboardingCompleted: vi.fn().mockRejectedValue(boom) });
+      const events = makeEvents();
+      const svc = new SettingsService(repo, events);
+
+      await expect(svc.completeOnboarding('org_1', new Date())).rejects.toBe(boom);
+      expect(events.emit).not.toHaveBeenCalled();
     });
   });
 
