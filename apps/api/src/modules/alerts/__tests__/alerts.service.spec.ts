@@ -79,6 +79,7 @@ function makeRepo(overrides: Partial<AlertsRepo> = {}): AlertsRepo {
     findParentComment: vi.fn().mockResolvedValue(null),
     deleteComment: vi.fn().mockResolvedValue(undefined),
     findEvents: vi.fn().mockResolvedValue([]),
+    statsForOrg: vi.fn().mockResolvedValue({ total: 0, byStatus: {}, bySeverity: {} }),
     ...overrides,
   } as unknown as AlertsRepo;
 }
@@ -328,6 +329,33 @@ describe('AlertsService.addComment', () => {
 
     expect(repo.createComment).toHaveBeenCalled();
     expect(comment).toBeDefined();
+  });
+});
+
+describe('AlertsService.getStats', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('delegates to repo.statsForOrg and returns the result', async () => {
+    const stats = {
+      total: 10,
+      byStatus: {
+        NEW: 3,
+        TRIAGING: 2,
+        ANALYZING: 1,
+        DEBATING: 1,
+        CONCLUDED: 2,
+        DISTRIBUTED: 1,
+        ARCHIVED: 0,
+      },
+      bySeverity: {},
+    };
+    const repo = makeRepo({ statsForOrg: vi.fn().mockResolvedValue(stats) } as Partial<AlertsRepo>);
+    const service = makeService(repo);
+
+    const result = await service.getStats('org-1');
+
+    expect(repo.statsForOrg).toHaveBeenCalledWith('org-1');
+    expect(result).toEqual(stats);
   });
 });
 
