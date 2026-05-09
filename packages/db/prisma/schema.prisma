@@ -234,6 +234,12 @@ model Settings {
   // Null until the first cap-skip event occurs.
   lastSkippedCapAt DateTime?
 
+  // MVP-11 (migration #14): onboarding completion timestamp.
+  // NULL = onboarding not yet completed. Set once via PATCH /org/:orgId/settings
+  // when the OWNER completes or skips the onboarding wizard.
+  // No backfill — existing rows keep NULL (no real users pre-MVP-11).
+  onboardingCompletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

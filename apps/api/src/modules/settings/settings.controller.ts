@@ -6,6 +6,7 @@ import {
   Header,
   Inject,
   Param,
+  Patch,
   Put,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -15,7 +16,12 @@ import { CurrentOrg } from '../../common/auth/decorators/current-org.decorator.j
 import { Roles } from '../../common/auth/decorators/roles.decorator.js';
 import { ZodBodyPipe } from '../../common/pipes/zod-body.pipe.js';
 import { toSettingsDto, type SettingsResponseDto } from './dto/settings-response.dto.js';
-import { UpdateSettingsSchema, type UpdateSettingsInput } from './dto/update-settings.dto.js';
+import {
+  CompleteOnboardingSchema,
+  type CompleteOnboardingInput,
+  UpdateSettingsSchema,
+  type UpdateSettingsInput,
+} from './dto/update-settings.dto.js';
 import { SettingsService } from './settings.service.js';
 
 /**
@@ -108,6 +114,33 @@ export class SettingsController {
     if (!user) throw new UnauthorizedException('JWT required.');
     this.assertOrgScope(orgId, currentOrgId);
     const row = await this.service.update(orgId, body, user.userId);
+    return { settings: toSettingsDto(row) };
+  }
+
+  /**
+   * `PATCH /org/:orgId/settings` — partial update to mark onboarding
+   * as completed (MVP-11).
+   *
+   * Accepts only `{ onboardingCompletedAt: "<ISO-8601>" }` from the
+   * `/api/onboarding/complete` Next.js proxy route. Locked to OWNER
+   * (only the OWNER drives the onboarding wizard). The timestamp is
+   * written verbatim — the client sends `new Date().toISOString()`.
+   *
+   * Idempotent: calling twice is safe (last write wins, same observable
+   * state). The row must exist by the time this is called (the
+   * `/onboarding` RSC page calls `getOrCreate` first).
+   */
+  @Patch('org/:orgId/settings')
+  @Roles('OWNER')
+  @Header('Cache-Control', 'no-store')
+  async completeOnboarding(
+    @Param('orgId') orgId: string,
+    @CurrentOrg() currentOrgId: string,
+    @Body(new ZodBodyPipe(CompleteOnboardingSchema)) body: CompleteOnboardingInput,
+  ): Promise<SettingsResponseDto> {
+    this.assertOrgScope(orgId, currentOrgId);
+    const completedAt = new Date(body.onboardingCompletedAt);
+    const row = await this.service.completeOnboarding(orgId, completedAt);
     return { settings: toSettingsDto(row) };
   }
 

@@ -74,6 +74,7 @@ import type { MembershipClaim } from '@regwatch/types';
 
 import { auth } from '@/lib/auth';
 import { resolveActiveOrg } from '@/lib/active-org-resolve';
+import { apiServerFetch } from '@/lib/api-server';
 import { ActiveOrgProvider } from '@/components/org-switcher/active-org-provider';
 import { OrgSwitcher } from '@/components/org-switcher/org-switcher';
 import { NavLinks } from '@/components/dashboard/nav-links';
@@ -95,6 +96,25 @@ export default async function DashboardLayout({
     .memberships ?? []) as ReadonlyArray<MembershipClaim>;
 
   const { activeOrgId } = await resolveActiveOrg(memberships);
+
+  // Onboarding redirect guard (MVP-11):
+  // OWNER with null onboardingCompletedAt → redirect to /onboarding.
+  // Non-OWNER roles are never redirected (ADMIN/ANALYST/VIEWER bypass).
+  const activeMembership = memberships.find((m) => m.organizationId === activeOrgId);
+  if (activeMembership?.role === 'OWNER' && activeOrgId) {
+    const settingsRes = await apiServerFetch(`/org/${activeOrgId}/settings`, {
+      method: 'GET',
+      orgId: activeOrgId,
+    });
+    if (settingsRes.ok) {
+      const body = (await settingsRes.json()) as {
+        settings: { onboardingCompletedAt: string | null };
+      };
+      if (body.settings.onboardingCompletedAt === null) {
+        redirect('/onboarding');
+      }
+    }
+  }
 
   return (
     <SessionProvider session={session}>

@@ -39,6 +39,7 @@ function makeRepo(overrides: Partial<SettingsRepo> = {}): SettingsRepo {
     findByOrgId: vi.fn(),
     upsertDefault: vi.fn(),
     replace: vi.fn(),
+    setOnboardingCompleted: vi.fn(),
     ...overrides,
   };
 }
@@ -59,6 +60,7 @@ function makeSettingsRow(overrides: Partial<Settings> = {}): Settings {
     updatedAt: FIXED_NOW,
     outputLanguage: null,
     lastSkippedCapAt: null,
+    onboardingCompletedAt: null,
     ...overrides,
   };
 }

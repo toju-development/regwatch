@@ -123,4 +123,19 @@ export class SettingsService {
     }
     return saved;
   }
+
+  /**
+   * Mark onboarding as completed for `organizationId`.
+   *
+   * Called by `PATCH /org/:orgId/settings` (MVP-11 onboarding wizard).
+   * The `completedAt` timestamp comes from the client (ISO string parsed
+   * server-side) so the record reflects when the user actually clicked
+   * "Finish" / "Skip all". The repo does a minimal UPDATE touching only
+   * `onboardingCompletedAt` and `updatedAt`.
+   *
+   * Idempotent — calling twice is safe (last write wins, same effect).
+   */
+  async completeOnboarding(organizationId: string, completedAt: Date): Promise<Settings> {
+    return this.repo.setOnboardingCompleted(organizationId, completedAt);
+  }
 }
