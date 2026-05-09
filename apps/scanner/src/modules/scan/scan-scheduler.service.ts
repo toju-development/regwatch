@@ -30,9 +30,9 @@ import { shouldScanNow } from './utils/cadence.helper.js';
 
 /**
  * Single source of truth for jurisdictions this scanner can process.
- * MVP-12: AR only. MVP-13 will add MX, PE, BR, CL, CO, UY.
+ * MVP-13: AR + BR + CO + PE + CL.
  */
-export const SUPPORTED_JURISDICTIONS = ['AR'] as const;
+export const SUPPORTED_JURISDICTIONS = ['AR', 'BR', 'CO', 'PE', 'CL'] as const;
 export type SupportedJurisdiction = (typeof SUPPORTED_JURISDICTIONS)[number];
 
 /**

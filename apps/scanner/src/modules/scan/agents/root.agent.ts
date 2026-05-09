@@ -10,6 +10,10 @@
  * NEVER touches `organizationId`.
  */
 import { AR_SOURCES } from '../sources/ar.js';
+import { BR_SOURCES } from '../sources/br.js';
+import { CL_SOURCES } from '../sources/cl.js';
+import { CO_SOURCES } from '../sources/co.js';
+import { PE_SOURCES } from '../sources/pe.js';
 import {
   type AgentUsageMetadata,
   type JurisdictionScanner,
@@ -33,14 +37,22 @@ export interface RootAgent {
   run(opts: RootAgentRunOpts): Promise<RootAgentRunResult>;
 }
 
-/** Resolve the source list for a given jurisdiction. MVP-5: AR only. */
+/** Resolve the source list for a given jurisdiction. */
 export function sourcesFor(jurisdiction: string) {
   switch (jurisdiction) {
     case 'AR':
       return AR_SOURCES;
+    case 'BR':
+      return BR_SOURCES;
+    case 'CO':
+      return CO_SOURCES;
+    case 'PE':
+      return PE_SOURCES;
+    case 'CL':
+      return CL_SOURCES;
     default:
       throw new Error(
-        `RootAgent: unsupported jurisdiction "${jurisdiction}" (MVP-5 ships AR only — MVP-13 adds BR/CO/PE/CL).`,
+        `RootAgent: unsupported jurisdiction "${jurisdiction}" — supported: AR, BR, CO, PE, CL.`,
       );
   }
 }
