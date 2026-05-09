@@ -5,9 +5,9 @@
  * Mounted OUTSIDE the `(dashboard)` route group so the full dashboard
  * layout (nav chrome, OrgSwitcher) never renders behind the wizard.
  *
- * "Skip all" calls the `/api/onboarding/complete` proxy route with
- * a server action, which PATCHes `/org/:orgId/settings` and redirects
- * to `/dashboard`.
+ * "Skip all" calls `apiServerFetch` directly from a server action, which
+ * PATCHes `/org/:orgId/settings` and — only on success — redirects to
+ * `/dashboard`. If the PATCH fails, an error is thrown (no redirect).
  *
  * Spec: `sdd/onboarding-flow/spec` — "Dedicated /onboarding route
  *   outside dashboard group", "Skip all from layout header".
@@ -36,11 +36,15 @@ async function skipAllAction(): Promise<never> {
   const { activeOrgId } = await resolveActiveOrg(memberships);
   if (!activeOrgId) redirect('/login');
 
-  await apiServerFetch(`/org/${activeOrgId}/settings`, {
+  const res = await apiServerFetch(`/org/${activeOrgId}/settings`, {
     method: 'PATCH',
     orgId: activeOrgId,
     body: { onboardingCompletedAt: new Date().toISOString() },
   });
+
+  if (!res.ok) {
+    throw new Error(`Failed to mark onboarding complete (${res.status})`);
+  }
 
   redirect('/dashboard');
 }

@@ -526,7 +526,7 @@ describe.skipIf(!dbAvailable)('SettingsController (HTTP integration)', () => {
         },
       );
 
-      it('invalid body (missing field) → 400', async () => {
+      it('invalid body (bad datetime format) → 400', async () => {
         const { org, actor } = await seed('OWNER');
         const jwt = await getJwt(actor, org, 'OWNER');
         // Ensure row exists.

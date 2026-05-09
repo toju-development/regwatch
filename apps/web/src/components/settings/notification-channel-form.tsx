@@ -44,7 +44,16 @@ export interface NotificationChannelFormProps {
 const SLACK_WEBHOOK_PREFIX = 'https://hooks.slack.com/';
 
 function isValidSlackWebhookUrl(url: string): boolean {
-  return url.startsWith(SLACK_WEBHOOK_PREFIX);
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === 'hooks.slack.com' &&
+      parsed.pathname.startsWith('/services/')
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function NotificationChannelForm({
@@ -73,7 +82,7 @@ export function NotificationChannelForm({
           className="bg-muted truncate rounded px-3 py-2 text-sm"
           data-testid="notification-channel-form-existing-url"
         >
-          {initialChannel.webhookUrl}
+          {`${SLACK_WEBHOOK_PREFIX}…`}
         </p>
       </div>
     );
@@ -88,7 +97,7 @@ export function NotificationChannelForm({
       return;
     }
     if (!isValidSlackWebhookUrl(trimmed)) {
-      setErrorMsg(`URL must start with "${SLACK_WEBHOOK_PREFIX}".`);
+      setErrorMsg(`URL must be a valid Slack webhook (https://hooks.slack.com/services/…).`);
       return;
     }
     startTransition(async () => {

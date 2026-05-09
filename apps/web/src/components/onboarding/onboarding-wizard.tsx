@@ -46,6 +46,7 @@ export function OnboardingWizard({
 }: OnboardingWizardProps): React.ReactElement {
   const [step, setStep] = useState(0);
   const [finishing, startFinish] = useTransition();
+  const [finishError, setFinishError] = useState<string | null>(null);
   const router = useRouter();
 
   function advance(): void {
@@ -53,8 +54,13 @@ export function OnboardingWizard({
   }
 
   function handleFinish(): void {
+    setFinishError(null);
     startFinish(async () => {
-      await completeOnboardingAction(orgId);
+      const result = await completeOnboardingAction(orgId);
+      if (!result.ok) {
+        setFinishError(result.error ?? 'Failed to complete onboarding. Please try again.');
+        return;
+      }
       router.push('/dashboard');
     });
   }
@@ -89,6 +95,15 @@ export function OnboardingWizard({
       {finishing ? (
         <p className="text-muted-foreground text-sm" data-testid="onboarding-wizard-finishing">
           Finishing setup…
+        </p>
+      ) : null}
+      {finishError ? (
+        <p
+          role="alert"
+          className="text-destructive text-sm"
+          data-testid="onboarding-wizard-finish-error"
+        >
+          {finishError}
         </p>
       ) : null}
     </div>

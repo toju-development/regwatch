@@ -17,6 +17,8 @@
  * `DUPLICATE_JURISDICTION_CODE`, `WEEKLY_REQUIRES_SINGLE_DAY`) surface as
  * `error` strings on individual Zod issues.
  */
+import { z } from 'zod';
+
 export { UpdateSettingsSchema, type UpdateSettingsInput } from '@regwatch/types';
 
 /**
@@ -30,8 +32,6 @@ export { UpdateSettingsSchema, type UpdateSettingsInput } from '@regwatch/types'
  * Spec: `sdd/onboarding-flow/spec` — "PUT marks onboarding complete".
  * Design: `sdd/onboarding-flow/design` — PATCH /org/:orgId/settings delta.
  */
-import { z } from 'zod';
-
 export const CompleteOnboardingSchema = z.object({
   onboardingCompletedAt: z.string().datetime({ message: 'Must be an ISO-8601 datetime string' }),
 });

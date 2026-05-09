@@ -44,7 +44,7 @@ describe('<NotificationChannelForm>', () => {
     );
 
     expect(screen.getByTestId('notification-channel-form-existing-url')).toHaveTextContent(
-      'https://hooks.slack.com/services/existing',
+      'https://hooks.slack.com/…',
     );
     expect(screen.queryByTestId('notification-channel-form-url-input')).not.toBeInTheDocument();
   });
