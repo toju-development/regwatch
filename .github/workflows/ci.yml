@@ -13,8 +13,12 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write # Required for google-github-actions/auth Workload Identity Federation
 
 env:
+  GAR_LOCATION: us-central1 # Google Artifact Registry region
+  GAR_REPOSITORY: regwatch # Artifact Registry repository name
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }} # Set in GitHub repo variables
   # GitHub Actions sets CI=true automatically — listed here for clarity.
   # husky@9's `prepare` script auto-no-ops when CI=true, so `pnpm install`
   # will not try to wire git hooks in CI.
@@ -217,3 +221,108 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # deploy: build Docker images → push to Artifact Registry → deploy Cloud Run
+  # Runs only on push to main (not on PRs) after quality passes.
+  # Prerequisites: see DEPLOYMENT.md for GCP setup and required secrets/vars.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: deploy to Cloud Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: quality
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Authenticate to GCP using Workload Identity Federation (keyless).
+      # Required GitHub secrets: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+      # See DEPLOYMENT.md § "GitHub Actions Authentication" for setup steps.
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      # ── Build and push: api ────────────────────────────────────────────────
+      - name: Build api image
+        run: |
+          docker build \
+            --file apps/api/Dockerfile \
+            --tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-api:${{ github.sha }} \
+            --tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-api:latest \
+            .
+
+      - name: Push api image
+        run: |
+          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-api:${{ github.sha }}
+          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-api:latest
+
+      # ── Build and push: scanner ────────────────────────────────────────────
+      - name: Build scanner image
+        run: |
+          docker build \
+            --file apps/scanner/Dockerfile \
+            --tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-scanner:${{ github.sha }} \
+            --tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-scanner:latest \
+            .
+
+      - name: Push scanner image
+        run: |
+          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-scanner:${{ github.sha }}
+          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-scanner:latest
+
+      # ── Build and push: web ────────────────────────────────────────────────
+      - name: Build web image
+        run: |
+          docker build \
+            --file apps/web/Dockerfile \
+            --tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-web:${{ github.sha }} \
+            --tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-web:latest \
+            .
+
+      - name: Push web image
+        run: |
+          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-web:${{ github.sha }}
+          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-web:latest
+
+      # ── Deploy to Cloud Run ────────────────────────────────────────────────
+      - name: Deploy regwatch-api
+        run: |
+          gcloud run deploy regwatch-api \
+            --image=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-api:${{ github.sha }} \
+            --region=${{ env.GAR_LOCATION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --port=3001
+
+      - name: Deploy regwatch-scanner
+        run: |
+          gcloud run deploy regwatch-scanner \
+            --image=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-scanner:${{ github.sha }} \
+            --region=${{ env.GAR_LOCATION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --port=3002
+
+      - name: Deploy regwatch-web
+        run: |
+          gcloud run deploy regwatch-web \
+            --image=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/regwatch-web:${{ github.sha }} \
+            --region=${{ env.GAR_LOCATION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=3000
