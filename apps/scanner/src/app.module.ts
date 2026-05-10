@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './common/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ScanModule } from './modules/scan/scan.module.js';
 import { EnrichmentModule } from './modules/enrichment/enrichment.module.js';
 import { AuthModule } from './common/auth/auth.module.js';
+import { env } from './env.js';
 
 /**
  * Root module for `apps/scanner`.
@@ -24,6 +26,13 @@ import { AuthModule } from './common/auth/auth.module.js';
  */
 @Module({
   imports: [
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: env.LOG_LEVEL,
+        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        transport: env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
+      },
+    }),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     PrismaModule,
