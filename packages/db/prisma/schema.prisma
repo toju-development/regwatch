@@ -445,6 +445,8 @@ model EnrichmentLog {
 // Append-only enum — future adapters (Teams, Email) add values here.
 enum NotificationProvider {
   SLACK
+  /// POST-1 — Microsoft Teams Incoming Webhook adapter (sdd/notify-teams)
+  TEAMS
 }
 
 // Multiple rows per (org, provider) are allowed — MVP-14 drops the unique
