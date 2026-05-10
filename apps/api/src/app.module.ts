@@ -12,6 +12,7 @@ import { UsageModule } from './modules/usage/usage.module.js';
 import { IngestModule } from './modules/ingest/ingest.module.js';
 import { AlertsModule } from './modules/alerts/alerts.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
+import { EmailInboundModule } from './modules/email-inbound/email-inbound.module.js';
 import { TestOnlyModule } from './common/auth/__test-only__/test-only.module.js';
 import { env } from './env.js';
 
@@ -43,6 +44,7 @@ function conditionalImports(): NonNullable<DynamicModule['imports']> {
     IngestModule,
     AlertsModule,
     NotificationsModule,
+    EmailInboundModule,
   ];
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
     base.push(TestOnlyModule);
