@@ -18,3 +18,6 @@ process.env.AUTH_SECRET =
 process.env.SCANNER_INTERNAL_SECRET =
   process.env.SCANNER_INTERNAL_SECRET ?? 'test-scanner-secret-at-least-32-chars-ok';
 process.env.MANUAL_INGEST_ENABLED = process.env.MANUAL_INGEST_ENABLED ?? 'true';
+// sdd/notify-email-resend (POST-2): use memory transport in all tests so
+// RESEND_API_KEY / RESEND_FROM_EMAIL are not required by createApiEnv().
+process.env.EMAIL_TRANSPORT = process.env.EMAIL_TRANSPORT ?? 'memory';
