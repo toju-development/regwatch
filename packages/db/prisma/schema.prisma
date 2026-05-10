@@ -447,6 +447,8 @@ enum NotificationProvider {
   SLACK
   /// POST-1 — Microsoft Teams Incoming Webhook adapter (sdd/notify-teams)
   TEAMS
+  /// POST-2 — Email via Resend (sdd/notify-email-resend)
+  EMAIL
 }
 
 // Multiple rows per (org, provider) are allowed — MVP-14 drops the unique

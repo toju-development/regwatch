@@ -54,6 +54,27 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
        * sdd/email-inbound REQ-1.
        */
       EMAIL_INBOUND_WEBHOOK_SECRET: z.string().optional(),
+      /**
+       * Email transport mode. 'memory' = in-process MemoryEmailAdapter (dev/test).
+       * Any other value (or unset) → ResendEmailAdapter is used (production).
+       * sdd/notify-email-resend (POST-2).
+       */
+      EMAIL_TRANSPORT: z.string().optional(),
+      /**
+       * Resend API key for outbound email. Required when EMAIL_TRANSPORT is not 'memory'.
+       * Optional at config level so the memory adapter path can boot without it.
+       * sdd/notify-email-resend (POST-2).
+       */
+      RESEND_API_KEY:
+        runtimeEnv['EMAIL_TRANSPORT'] === 'memory' ? z.string().optional() : z.string().min(1),
+      /**
+       * Resend verified sender address (From: header). Required when not memory transport.
+       * sdd/notify-email-resend (POST-2).
+       */
+      RESEND_FROM_EMAIL:
+        runtimeEnv['EMAIL_TRANSPORT'] === 'memory'
+          ? z.string().email().optional()
+          : z.string().email(),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
