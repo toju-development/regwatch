@@ -201,4 +201,81 @@ describe('<PreferencesForm>', () => {
       (within(wrap).getByTestId('preferences-form-day-custom-tue') as HTMLInputElement).checked,
     ).toBe(false);
   });
+
+  it('shows day-of-month input when schedule=monthly', async () => {
+    render(
+      <PreferencesForm
+        orgId="org-1"
+        canEdit
+        initial={{
+          jurisdictions: DEFAULT_SETTINGS.jurisdictions,
+          scanSchedule: DEFAULT_SETTINGS.scanSchedule,
+          scanDay: DEFAULT_SETTINGS.scanDay,
+          scanHour: DEFAULT_SETTINGS.scanHour,
+        }}
+      />,
+    );
+
+    const user = userEvent.setup();
+    const select = screen.getByTestId('preferences-form-schedule');
+
+    // monthly not yet selected — input should be absent
+    expect(screen.queryByTestId('preferences-form-day-of-month')).toBeNull();
+
+    await user.selectOptions(select, 'monthly');
+
+    const dayInput = screen.getByTestId('preferences-form-day-of-month') as HTMLInputElement;
+    expect(dayInput).toBeTruthy();
+    expect(dayInput.min).toBe('1');
+    expect(dayInput.max).toBe('28');
+  });
+
+  it('hides day-of-month input when switching away from monthly', async () => {
+    render(
+      <PreferencesForm
+        orgId="org-1"
+        canEdit
+        initial={{
+          jurisdictions: DEFAULT_SETTINGS.jurisdictions,
+          scanSchedule: 'monthly',
+          scanDay: DEFAULT_SETTINGS.scanDay,
+          scanHour: DEFAULT_SETTINGS.scanHour,
+          scanDayOfMonth: 15,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('preferences-form-day-of-month')).toBeTruthy();
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByTestId('preferences-form-schedule'), 'weekly');
+
+    expect(screen.queryByTestId('preferences-form-day-of-month')).toBeNull();
+  });
+
+  it('includes scanDayOfMonth in payload when schedule=monthly', async () => {
+    updateSettingsAction.mockResolvedValue({ ok: true });
+
+    render(
+      <PreferencesForm
+        orgId="org-1"
+        canEdit
+        initial={{
+          jurisdictions: DEFAULT_SETTINGS.jurisdictions,
+          scanSchedule: 'monthly',
+          scanDay: DEFAULT_SETTINGS.scanDay,
+          scanHour: DEFAULT_SETTINGS.scanHour,
+          scanDayOfMonth: 15,
+        }}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('preferences-form-submit'));
+
+    await waitFor(() => expect(updateSettingsAction).toHaveBeenCalledTimes(1));
+    const [, payload] = updateSettingsAction.mock.calls[0]!;
+    expect((payload as { scanSchedule: string }).scanSchedule).toBe('monthly');
+    expect((payload as { scanDayOfMonth: number }).scanDayOfMonth).toBe(15);
+  });
 });
