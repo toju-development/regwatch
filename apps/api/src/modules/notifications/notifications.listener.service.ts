@@ -258,7 +258,11 @@ export class NotificationsListenerService {
       orgName: shared.orgName,
       actorName: shared.actorName,
       assigneeName: shared.assigneeName,
+      // TODO: rename webhookUrl → deliveryTarget in a future migration
       webhookUrl: ch.webhookUrl,
+      // For EMAIL channels, ch.webhookUrl stores the recipient email address.
+      // recipientEmail makes the semantic explicit to adapters (design D2).
+      recipientEmail: ch.provider === 'EMAIL' ? ch.webhookUrl : undefined,
     };
   }
 
