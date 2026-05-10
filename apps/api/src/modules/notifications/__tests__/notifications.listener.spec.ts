@@ -1,21 +1,27 @@
 /**
  * Unit tests for `NotificationsListenerService`.
  *
+ * sdd/notify-teams (POST-1):
+ *  - 8.7 org with SLACK + TEAMS channels → both adapters called with correct webhookUrls
+ *  - 8.8 channel with unknown provider → silently skipped, no error
+ *  - 8.9 TEAMS channel out of jurisdiction → not dispatched
+ *  - 8.10 all pre-existing Slack listener tests pass without modification
+ *
  * sdd/segmented-distribution (MVP-14):
  *  - 6.1 catch-all channel (jurisdictions=[]) receives every alert
  *  - 6.2 filtered channel receives only matching effectiveJurisdiction
  *  - 6.3 filtered channel ignores non-matching jurisdiction
  *  - 6.4 effectiveJurisdiction resolves via scanLog.jurisdiction when alert.jurisdiction=null
  *  - 6.5 null effectiveJurisdiction (no scanLog) reaches only catch-all channels
- *  - 6.6 zero matching channels: port.send* never called, DISTRIBUTED not emitted
+ *  - 6.6 zero matching channels: adapter.send* never called, DISTRIBUTED not emitted
  *  - 6.7 all channels fail Promise.allSettled: DISTRIBUTED not emitted
  *  - 6.8 one channel fulfills, one rejects: DISTRIBUTED emitted exactly once
  *
  * sdd/notify-slack/spec (legacy):
- *  - dedup guard: toStatus === 'CONCLUDED' → return early, port NOT called
+ *  - dedup guard: toStatus === 'CONCLUDED' → return early, adapter NOT called
  *  - dedup guard: toStatus === 'DISTRIBUTED' → return early (prevent recursion)
- *  - unconfigured org (repo returns [] channels) → no port call, no error
- *  - each of 3 events triggers the correct port method with correct ctx
+ *  - unconfigured org (repo returns [] channels) → no adapter call, no error
+ *  - each of 3 events triggers the correct adapter method with correct ctx
  *
  * NO `pnpm build` after changes (project rule).
  */
@@ -25,18 +31,20 @@ import { NotificationsListenerService } from '../notifications.listener.service.
 import type { NotificationPort, NotificationContext, AlertStatus } from '@regwatch/types';
 import type { PrismaClient } from '@regwatch/db/client';
 import type { NotificationsRepo } from '../notifications.repository.js';
+import type { NotificationAdapterRegistry } from '../notification-adapter.registry.js';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const WEBHOOK_A = 'https://hooks.slack.com/A';
-const WEBHOOK_B = 'https://hooks.slack.com/B';
+const WEBHOOK_B = 'https://teams.webhook.office.com/B';
 
 function makeChannel(
   overrides: {
     id?: string;
     webhookUrl?: string;
     channelName?: string | null;
+    provider?: string;
     jurisdictions?: string[];
   } = {},
 ) {
@@ -44,6 +52,7 @@ function makeChannel(
     id: overrides.id ?? 'chan-1',
     webhookUrl: overrides.webhookUrl ?? WEBHOOK_A,
     channelName: overrides.channelName ?? null,
+    provider: overrides.provider ?? 'SLACK',
     jurisdictions: overrides.jurisdictions ?? [],
   };
 }
@@ -89,18 +98,33 @@ function makePrisma(
 
 function makeRepo(channels: ReturnType<typeof makeChannel>[] = [makeChannel()]) {
   return {
-    findActiveChannels: vi.fn().mockResolvedValue(channels),
+    findAllActiveChannels: vi.fn().mockResolvedValue(channels),
   } as unknown as NotificationsRepo;
 }
 
-// ─── Port mock ────────────────────────────────────────────────────────────────
+// ─── Adapter mocks ────────────────────────────────────────────────────────────
 
-function makePort(): NotificationPort {
+function makeAdapter(): NotificationPort {
   return {
     sendAlertConcluded: vi.fn().mockResolvedValue(undefined),
     sendAlertStatusChanged: vi.fn().mockResolvedValue(undefined),
     sendAlertAssigned: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+// ─── Registry mock factory ─────────────────────────────────────────────────────
+
+function makeRegistry(
+  slack: NotificationPort,
+  teams: NotificationPort,
+): NotificationAdapterRegistry {
+  return {
+    get: vi.fn((provider: string) => {
+      if (provider === 'SLACK') return slack;
+      if (provider === 'TEAMS') return teams;
+      return undefined;
+    }),
+  } as unknown as NotificationAdapterRegistry;
 }
 
 // ─── EventEmitter2 mock ───────────────────────────────────────────────────────
@@ -115,16 +139,16 @@ function makeEvents() {
 
 function makeService(
   prisma: PrismaClient,
-  port: NotificationPort,
+  registry: NotificationAdapterRegistry,
   repo: NotificationsRepo,
   events: EventEmitter2,
 ) {
   return new (NotificationsListenerService as unknown as new (
     prisma: PrismaClient,
-    port: NotificationPort,
+    registry: NotificationAdapterRegistry,
     repo: NotificationsRepo,
     events: EventEmitter2,
-  ) => NotificationsListenerService)(prisma, port, repo, events);
+  ) => NotificationsListenerService)(prisma, registry, repo, events);
 }
 
 // ─── Shared event payload builders ────────────────────────────────────────────
@@ -144,59 +168,61 @@ function statusChangedPayload(toStatus: AlertStatus = 'TRIAGING') {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('NotificationsListenerService', () => {
-  let port: NotificationPort;
+  let slackAdapter: NotificationPort;
+  let teamsAdapter: NotificationPort;
+  let registry: NotificationAdapterRegistry;
   let prisma: PrismaClient;
   let repo: NotificationsRepo;
   let events: EventEmitter2;
   let service: NotificationsListenerService;
 
   beforeEach(() => {
-    port = makePort();
+    slackAdapter = makeAdapter();
+    teamsAdapter = makeAdapter();
+    registry = makeRegistry(slackAdapter, teamsAdapter);
     prisma = makePrisma();
     repo = makeRepo();
     events = makeEvents();
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
   });
 
   // ── dedup guards ─────────────────────────────────────────────────────────────
 
-  it('onAlertStatusChanged: toStatus === CONCLUDED → returns early, port NOT called', async () => {
+  it('onAlertStatusChanged: toStatus === CONCLUDED → returns early, adapter NOT called', async () => {
     await service.onAlertStatusChanged(statusChangedPayload('CONCLUDED'));
-    expect(port.sendAlertStatusChanged).not.toHaveBeenCalled();
-    expect(repo.findActiveChannels).not.toHaveBeenCalled();
+    expect(registry.get).not.toHaveBeenCalled();
+    expect(repo.findAllActiveChannels).not.toHaveBeenCalled();
   });
 
   it('onAlertStatusChanged: toStatus === DISTRIBUTED → returns early (recursion guard)', async () => {
     await service.onAlertStatusChanged(statusChangedPayload('DISTRIBUTED'));
-    expect(port.sendAlertStatusChanged).not.toHaveBeenCalled();
-    expect(repo.findActiveChannels).not.toHaveBeenCalled();
+    expect(registry.get).not.toHaveBeenCalled();
+    expect(repo.findAllActiveChannels).not.toHaveBeenCalled();
   });
 
   // ── 6.1: catch-all channel receives every alert ───────────────────────────
 
   it('6.1: catch-all channel (jurisdictions=[]) receives alert with any effectiveJurisdiction', async () => {
-    // channel with empty jurisdictions is catch-all
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
     prisma = makePrisma({ alertJurisdiction: 'AR' });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    expect(port.sendAlertStatusChanged).toHaveBeenCalledOnce();
+    expect(slackAdapter.sendAlertStatusChanged).toHaveBeenCalledOnce();
   });
 
   it('6.1b: catch-all channel receives alert when effectiveJurisdiction is null', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
     prisma = makePrisma({ alertJurisdiction: null, hasScanLog: false });
-    // update mock to return current status for DISTRIBUTED check
     (prisma.alert.findUnique as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ title: 'T', sourceUrl: 'u', jurisdiction: null, scanLog: null })
       .mockResolvedValue({ status: 'TRIAGING' });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    expect(port.sendAlertStatusChanged).toHaveBeenCalledOnce();
+    expect(slackAdapter.sendAlertStatusChanged).toHaveBeenCalledOnce();
   });
 
   // ── 6.2: filtered channel receives only matching jurisdiction ─────────────
@@ -207,15 +233,13 @@ describe('NotificationsListenerService', () => {
     (prisma.alert.findUnique as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ title: 'T', sourceUrl: 'u', jurisdiction: 'AR', scanLog: null })
       .mockResolvedValue({ status: 'TRIAGING' });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    expect(port.sendAlertStatusChanged).toHaveBeenCalledOnce();
-    const [, ctx] = (port.sendAlertStatusChanged as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      unknown,
-      NotificationContext,
-    ];
+    expect(slackAdapter.sendAlertStatusChanged).toHaveBeenCalledOnce();
+    const [, ctx] = (slackAdapter.sendAlertStatusChanged as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [unknown, NotificationContext];
     expect(ctx.webhookUrl).toBe(WEBHOOK_A);
   });
 
@@ -230,11 +254,11 @@ describe('NotificationsListenerService', () => {
       jurisdiction: 'UY',
       scanLog: null,
     });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    expect(port.sendAlertStatusChanged).not.toHaveBeenCalled();
+    expect(slackAdapter.sendAlertStatusChanged).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
   });
 
@@ -251,11 +275,11 @@ describe('NotificationsListenerService', () => {
         scanLog: { jurisdiction: 'AR' },
       })
       .mockResolvedValue({ status: 'TRIAGING' });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    expect(port.sendAlertStatusChanged).toHaveBeenCalledOnce();
+    expect(slackAdapter.sendAlertStatusChanged).toHaveBeenCalledOnce();
   });
 
   // ── 6.5: null effectiveJurisdiction reaches only catch-all channels ────────
@@ -268,22 +292,19 @@ describe('NotificationsListenerService', () => {
     (prisma.alert.findUnique as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ title: 'T', sourceUrl: 'u', jurisdiction: null, scanLog: null })
       .mockResolvedValue({ status: 'TRIAGING' });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    // Only catch-all channel (WEBHOOK_A) should be called
-    expect(port.sendAlertStatusChanged).toHaveBeenCalledOnce();
-    const [, ctx] = (port.sendAlertStatusChanged as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      unknown,
-      NotificationContext,
-    ];
+    expect(slackAdapter.sendAlertStatusChanged).toHaveBeenCalledOnce();
+    const [, ctx] = (slackAdapter.sendAlertStatusChanged as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [unknown, NotificationContext];
     expect(ctx.webhookUrl).toBe(WEBHOOK_A);
   });
 
-  // ── 6.6: zero matching channels → port never called, DISTRIBUTED not emitted
+  // ── 6.6: zero matching channels → adapter never called, DISTRIBUTED not emitted
 
-  it('6.6: zero matching channels → port.sendAlertStatusChanged not called, DISTRIBUTED not emitted', async () => {
+  it('6.6: zero matching channels → adapter.sendAlertStatusChanged not called, DISTRIBUTED not emitted', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: ['AR'] })]);
     (prisma.alert.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       title: 'T',
@@ -291,11 +312,11 @@ describe('NotificationsListenerService', () => {
       jurisdiction: 'UY',
       scanLog: null,
     });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
-    expect(port.sendAlertStatusChanged).not.toHaveBeenCalled();
+    expect(slackAdapter.sendAlertStatusChanged).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
   });
 
@@ -303,14 +324,14 @@ describe('NotificationsListenerService', () => {
 
   it('6.7: all channel calls fail → DISTRIBUTED not emitted', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
-    vi.spyOn(port, 'sendAlertStatusChanged').mockRejectedValue(new Error('Slack 500'));
+    vi.spyOn(slackAdapter, 'sendAlertStatusChanged').mockRejectedValue(new Error('Slack 500'));
     (prisma.alert.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       title: 'T',
       sourceUrl: 'u',
       jurisdiction: null,
       scanLog: null,
     });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
@@ -324,7 +345,7 @@ describe('NotificationsListenerService', () => {
       makeChannel({ id: 'c1', webhookUrl: WEBHOOK_A, jurisdictions: [] }),
       makeChannel({ id: 'c2', webhookUrl: WEBHOOK_B, jurisdictions: [] }),
     ]);
-    (port.sendAlertStatusChanged as ReturnType<typeof vi.fn>)
+    (slackAdapter.sendAlertStatusChanged as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(undefined) // c1 fulfills
       .mockRejectedValueOnce(new Error('fail')); // c2 rejects
 
@@ -332,7 +353,7 @@ describe('NotificationsListenerService', () => {
       .mockResolvedValueOnce({ title: 'T', sourceUrl: 'u', jurisdiction: null, scanLog: null })
       .mockResolvedValue({ status: 'TRIAGING' }); // for emitDistributed check
 
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload());
 
@@ -345,9 +366,9 @@ describe('NotificationsListenerService', () => {
 
   // ── unconfigured org (no active channels) ────────────────────────────────────
 
-  it('onAlertConcluded: no active channels → no port call, no error', async () => {
+  it('onAlertConcluded: no active channels → no adapter call, no error', async () => {
     repo = makeRepo([]);
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await expect(
       service.onAlertConcluded({
@@ -360,14 +381,14 @@ describe('NotificationsListenerService', () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(port.sendAlertConcluded).not.toHaveBeenCalled();
+    expect(slackAdapter.sendAlertConcluded).not.toHaveBeenCalled();
   });
 
   // ── event routing ───────────────────────────────────────────────────────────
 
   it('onAlertConcluded: configured org → calls sendAlertConcluded', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     const payload = {
       alertId: 'alert-1',
@@ -380,8 +401,8 @@ describe('NotificationsListenerService', () => {
 
     await service.onAlertConcluded(payload);
 
-    expect(port.sendAlertConcluded).toHaveBeenCalledOnce();
-    const [, ctx] = (port.sendAlertConcluded as ReturnType<typeof vi.fn>).mock.calls[0] as [
+    expect(slackAdapter.sendAlertConcluded).toHaveBeenCalledOnce();
+    const [, ctx] = (slackAdapter.sendAlertConcluded as ReturnType<typeof vi.fn>).mock.calls[0] as [
       typeof payload,
       NotificationContext,
     ];
@@ -394,16 +415,16 @@ describe('NotificationsListenerService', () => {
     (prisma.alert.findUnique as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ title: 'T', sourceUrl: 'u', jurisdiction: null, scanLog: null })
       .mockResolvedValue({ status: 'TRIAGING' });
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertStatusChanged(statusChangedPayload('TRIAGING'));
 
-    expect(port.sendAlertStatusChanged).toHaveBeenCalledOnce();
+    expect(slackAdapter.sendAlertStatusChanged).toHaveBeenCalledOnce();
   });
 
   it('onAlertAssigned: configured org → calls sendAlertAssigned', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertAssigned({
       alertId: 'alert-1',
@@ -413,12 +434,12 @@ describe('NotificationsListenerService', () => {
       assignedAt: new Date().toISOString(),
     });
 
-    expect(port.sendAlertAssigned).toHaveBeenCalledOnce();
+    expect(slackAdapter.sendAlertAssigned).toHaveBeenCalledOnce();
   });
 
   it('onAlertAssigned: assigneeId null → ctx.assigneeName is null', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
-    service = makeService(prisma, port, repo, events);
+    service = makeService(prisma, registry, repo, events);
 
     await service.onAlertAssigned({
       alertId: 'alert-1',
@@ -428,18 +449,18 @@ describe('NotificationsListenerService', () => {
       assignedAt: new Date().toISOString(),
     });
 
-    expect(port.sendAlertAssigned).toHaveBeenCalledOnce();
-    const [, ctx] = (port.sendAlertAssigned as ReturnType<typeof vi.fn>).mock.calls[0] as [
+    expect(slackAdapter.sendAlertAssigned).toHaveBeenCalledOnce();
+    const [, ctx] = (slackAdapter.sendAlertAssigned as ReturnType<typeof vi.fn>).mock.calls[0] as [
       unknown,
       NotificationContext,
     ];
     expect(ctx.assigneeName).toBeNull();
   });
 
-  it('port error → caught, logged, not rethrown (fire-and-forget)', async () => {
+  it('adapter error → caught, logged, not rethrown (fire-and-forget)', async () => {
     repo = makeRepo([makeChannel({ jurisdictions: [] })]);
-    vi.spyOn(port, 'sendAlertConcluded').mockRejectedValue(new Error('Slack 500'));
-    service = makeService(prisma, port, repo, events);
+    vi.spyOn(slackAdapter, 'sendAlertConcluded').mockRejectedValue(new Error('Slack 500'));
+    service = makeService(prisma, registry, repo, events);
 
     await expect(
       service.onAlertConcluded({
@@ -451,5 +472,87 @@ describe('NotificationsListenerService', () => {
         concludedAt: new Date().toISOString(),
       }),
     ).resolves.toBeUndefined(); // must not throw
+  });
+
+  // ── 8.7: multi-provider fan-out ───────────────────────────────────────────
+
+  it('8.7: org with SLACK + TEAMS channels → both adapters called with correct webhookUrls', async () => {
+    const SLACK_HOOK = 'https://hooks.slack.com/services/test';
+    const TEAMS_HOOK = 'https://teams.webhook.office.com/test';
+
+    repo = makeRepo([
+      makeChannel({ id: 'c1', webhookUrl: SLACK_HOOK, provider: 'SLACK', jurisdictions: [] }),
+      makeChannel({ id: 'c2', webhookUrl: TEAMS_HOOK, provider: 'TEAMS', jurisdictions: [] }),
+    ]);
+    service = makeService(prisma, registry, repo, events);
+
+    await service.onAlertConcluded({
+      alertId: 'alert-1',
+      organizationId: 'org-1',
+      actorId: 'actor-1',
+      fromStatus: 'ANALYZING' as AlertStatus,
+      note: null,
+      concludedAt: new Date().toISOString(),
+    });
+
+    expect(slackAdapter.sendAlertConcluded).toHaveBeenCalledOnce();
+    const [, slackCtx] = (slackAdapter.sendAlertConcluded as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [unknown, NotificationContext];
+    expect(slackCtx.webhookUrl).toBe(SLACK_HOOK);
+
+    expect(teamsAdapter.sendAlertConcluded).toHaveBeenCalledOnce();
+    const [, teamsCtx] = (teamsAdapter.sendAlertConcluded as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [unknown, NotificationContext];
+    expect(teamsCtx.webhookUrl).toBe(TEAMS_HOOK);
+  });
+
+  // ── 8.8: unknown provider → silently skipped ─────────────────────────────
+
+  it('8.8: channel with unknown provider → silently skipped, no error', async () => {
+    repo = makeRepo([
+      makeChannel({ id: 'c1', webhookUrl: WEBHOOK_A, provider: 'LEGACY', jurisdictions: [] }),
+    ]);
+    service = makeService(prisma, registry, repo, events);
+
+    await expect(
+      service.onAlertConcluded({
+        alertId: 'alert-1',
+        organizationId: 'org-1',
+        actorId: 'actor-1',
+        fromStatus: 'ANALYZING' as AlertStatus,
+        note: null,
+        concludedAt: new Date().toISOString(),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(slackAdapter.sendAlertConcluded).not.toHaveBeenCalled();
+    expect(teamsAdapter.sendAlertConcluded).not.toHaveBeenCalled();
+  });
+
+  // ── 8.9: TEAMS channel out of jurisdiction → not dispatched ──────────────
+
+  it('8.9: TEAMS channel out of jurisdiction → not dispatched', async () => {
+    repo = makeRepo([
+      makeChannel({ id: 'c1', webhookUrl: WEBHOOK_B, provider: 'TEAMS', jurisdictions: ['AR'] }),
+    ]);
+    // Alert jurisdiction is UY — no match
+    (prisma.alert.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      title: 'T',
+      sourceUrl: 'u',
+      jurisdiction: 'UY',
+      scanLog: null,
+    });
+    service = makeService(prisma, registry, repo, events);
+
+    await service.onAlertConcluded({
+      alertId: 'alert-1',
+      organizationId: 'org-1',
+      actorId: 'actor-1',
+      fromStatus: 'ANALYZING' as AlertStatus,
+      note: null,
+      concludedAt: new Date().toISOString(),
+    });
+
+    expect(teamsAdapter.sendAlertConcluded).not.toHaveBeenCalled();
   });
 });
