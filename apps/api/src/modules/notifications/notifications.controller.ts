@@ -3,11 +3,12 @@
  *
  * sdd/notify-slack/spec R "Channel CRUD Endpoints".
  * sdd/notify-slack/design D6: /notifications/channels resource.
+ * sdd/segmented-distribution (MVP-14):
+ *   - POST is now a pure create (no upsert) → returns HTTP 201.
+ *   - Uses `createChannelSchema` / `CreateChannelDto`.
  *
  * Guard chain (global): JwtAuthGuard → MembershipFreshnessGuard → OrgScopeGuard → RolesGuard.
  * organizationId: from @CurrentOrg() (set by OrgScopeGuard — NEVER from body).
- *
- * POST is idempotent (upsert) → returns 200 always (not 201).
  *
  * Foot-gun #667: explicit @Inject(NotificationsService).
  */
@@ -28,7 +29,7 @@ import {
 import { CurrentOrg } from '../../common/auth/decorators/current-org.decorator.js';
 import { Roles } from '../../common/auth/decorators/roles.decorator.js';
 import { NotificationsService } from './notifications.service.js';
-import { upsertChannelSchema, patchChannelSchema } from './dto/upsert-channel.dto.js';
+import { createChannelSchema, patchChannelSchema } from './dto/create-channel.dto.js';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -46,23 +47,23 @@ export class NotificationsController {
 
   /**
    * POST /notifications/channels
-   * Upsert a notification channel (idempotent on provider per org).
-   * Returns HTTP 200 whether creating or updating.
+   * Create a new notification channel. Returns HTTP 201.
+   * Multiple channels per org/provider are allowed (unique constraint dropped in migration #14).
    */
   @Post('channels')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.CREATED)
   @Roles('OWNER', 'ADMIN')
-  async upsertChannel(@Body() rawBody: unknown, @CurrentOrg() orgId: string) {
-    const result = upsertChannelSchema.safeParse(rawBody);
+  async createChannel(@Body() rawBody: unknown, @CurrentOrg() orgId: string) {
+    const result = createChannelSchema.safeParse(rawBody);
     if (!result.success) {
       throw new BadRequestException({ message: 'Validation failed', issues: result.error.issues });
     }
-    return this.service.upsertChannel(orgId, result.data);
+    return this.service.createChannel(orgId, result.data);
   }
 
   /**
    * PATCH /notifications/channels/:id
-   * Partially update a channel (webhookUrl, channelName, isActive).
+   * Partially update a channel (webhookUrl, channelName, isActive, jurisdictions).
    * Returns 403 if channel belongs to a different org.
    */
   @Patch('channels/:id')

@@ -81,7 +81,7 @@ export function buildPrompt(
     'You MUST output ONLY a single JSON object — no prose, no markdown fences, no commentary.',
     'The JSON object MUST match this TypeScript shape:',
     '  { "findings": Array<{',
-    '      "source": "BCRA_COMUNICADOS_A" | "BCRA_COMUNICADOS_B" | "BCRA_COMUNICADOS_C" | "CNV_RESOLUCIONES_GENERALES",',
+    `      "source": ${sources.map((s) => `"${s.regulator}"`).join(' | ')},`,
     '      "sourceUrl": string (absolute https URL on the regulator domain),',
     '      "title": string (3-500 chars),',
     '      "summary": string (max 2000 chars),',

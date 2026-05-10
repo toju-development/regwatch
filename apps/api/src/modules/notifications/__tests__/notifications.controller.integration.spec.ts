@@ -3,11 +3,15 @@
  *
  * sdd/notify-slack/spec R "Channel CRUD Endpoints":
  *  - GET /notifications/channels → 200 (authenticated)
- *  - POST /notifications/channels → 200 (upsert idempotency)
+ *  - POST /notifications/channels → 201 (pure create — MVP-14)
  *  - PATCH /notifications/channels/:id → 200
  *  - DELETE /notifications/channels/:id → 204
  *  - Unauthenticated → 401
  *  - Cross-org PATCH → 403
+ *
+ * sdd/segmented-distribution (MVP-14):
+ *  - 6.12: POST returns 201 with `jurisdictions` in response body
+ *  - 6.13: PATCH by id with `jurisdictions` round-trips correctly
  *
  * Boots full AppModule against real Postgres (skipped when DB unreachable).
  * Follows same patterns as alerts.integration.spec.ts.
@@ -183,9 +187,9 @@ describe.skipIf(!dbAvailable)('NotificationsController (HTTP integration)', () =
     expect(body).toHaveLength(0);
   });
 
-  // ── POST — upsert idempotency ────────────────────────────────────────────────
+  // ── 6.12: POST returns 201 with jurisdictions in response ───────────────────
 
-  it('POST /notifications/channels — creates then idempotent on second call', async () => {
+  it('6.12: POST /notifications/channels → 201 with jurisdictions in response body', async () => {
     const user = await createUser();
     const org = await createOrg();
     await addMembership(user.userId, org.id, 'ADMIN');
@@ -193,11 +197,12 @@ describe.skipIf(!dbAvailable)('NotificationsController (HTTP integration)', () =
 
     const payload = {
       provider: 'SLACK',
-      webhookUrl: 'https://hooks.slack.com/services/test/first',
-      channelName: 'compliance',
+      webhookUrl: 'https://hooks.slack.com/services/test/mvp14',
+      channelName: 'compliance-ar',
+      jurisdictions: ['AR'],
     };
 
-    const res1 = await fetch(`${baseUrl}/notifications/channels`, {
+    const res = await fetch(`${baseUrl}/notifications/channels`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${jwt}`,
@@ -206,12 +211,24 @@ describe.skipIf(!dbAvailable)('NotificationsController (HTTP integration)', () =
       },
       body: JSON.stringify(payload),
     });
-    expect(res1.status).toBe(200);
-    const channel1 = (await res1.json()) as { id: string; webhookUrl: string };
-    expect(channel1.webhookUrl).toBe(payload.webhookUrl);
 
-    // Second POST with updated URL → same row updated, not duplicated
-    const res2 = await fetch(`${baseUrl}/notifications/channels`, {
+    expect(res.status).toBe(201);
+    const channel = (await res.json()) as {
+      id: string;
+      webhookUrl: string;
+      jurisdictions: string[];
+    };
+    expect(channel.webhookUrl).toBe(payload.webhookUrl);
+    expect(channel.jurisdictions).toEqual(['AR']);
+  });
+
+  it('POST without jurisdictions → 201, jurisdictions defaults to []', async () => {
+    const user = await createUser();
+    const org = await createOrg();
+    await addMembership(user.userId, org.id, 'ADMIN');
+    const jwt = await getJwt(user, org, 'ADMIN');
+
+    const res = await fetch(`${baseUrl}/notifications/channels`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${jwt}`,
@@ -219,21 +236,99 @@ describe.skipIf(!dbAvailable)('NotificationsController (HTTP integration)', () =
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        ...payload,
-        webhookUrl: 'https://hooks.slack.com/services/test/updated',
+        provider: 'SLACK',
+        webhookUrl: 'https://hooks.slack.com/services/test/catchall',
       }),
     });
-    expect(res2.status).toBe(200);
-    const channel2 = (await res2.json()) as { id: string; webhookUrl: string };
-    expect(channel2.id).toBe(channel1.id); // same record
-    expect(channel2.webhookUrl).toBe('https://hooks.slack.com/services/test/updated');
 
-    // Verify only one channel exists
+    expect(res.status).toBe(201);
+    const channel = (await res.json()) as { jurisdictions: string[] };
+    expect(channel.jurisdictions).toEqual([]);
+  });
+
+  it('POST allows multiple channels per org/provider (no unique constraint)', async () => {
+    const user = await createUser();
+    const org = await createOrg();
+    await addMembership(user.userId, org.id, 'ADMIN');
+    const jwt = await getJwt(user, org, 'ADMIN');
+
+    const headers = {
+      authorization: `Bearer ${jwt}`,
+      'x-org-id': org.id,
+      'content-type': 'application/json',
+    };
+
+    // First POST
+    const res1 = await fetch(`${baseUrl}/notifications/channels`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        provider: 'SLACK',
+        webhookUrl: 'https://hooks.slack.com/first',
+        jurisdictions: ['AR'],
+      }),
+    });
+    expect(res1.status).toBe(201);
+
+    // Second POST same provider → creates new row, not duplicate guard
+    const res2 = await fetch(`${baseUrl}/notifications/channels`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        provider: 'SLACK',
+        webhookUrl: 'https://hooks.slack.com/second',
+        jurisdictions: ['UY'],
+      }),
+    });
+    expect(res2.status).toBe(201);
+
+    // Verify two channels exist
     const listRes = await fetch(`${baseUrl}/notifications/channels`, {
       headers: { authorization: `Bearer ${jwt}`, 'x-org-id': org.id },
     });
     const channels = (await listRes.json()) as unknown[];
-    expect(channels).toHaveLength(1);
+    expect(channels.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── 6.13: PATCH with jurisdictions round-trips ───────────────────────────────
+
+  it('6.13: PATCH /notifications/channels/:id with jurisdictions → 200, jurisdictions updated', async () => {
+    const user = await createUser();
+    const org = await createOrg();
+    await addMembership(user.userId, org.id, 'OWNER');
+    const jwt = await getJwt(user, org, 'OWNER');
+
+    // Create with AR
+    const createRes = await fetch(`${baseUrl}/notifications/channels`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${jwt}`,
+        'x-org-id': org.id,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        provider: 'SLACK',
+        webhookUrl: 'https://hooks.slack.com/patch-test',
+        jurisdictions: ['AR'],
+      }),
+    });
+    const channel = (await createRes.json()) as { id: string; jurisdictions: string[] };
+    expect(channel.jurisdictions).toEqual(['AR']);
+
+    // Patch to add UY
+    const patchRes = await fetch(`${baseUrl}/notifications/channels/${channel.id}`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${jwt}`,
+        'x-org-id': org.id,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ jurisdictions: ['AR', 'UY'] }),
+    });
+
+    expect(patchRes.status).toBe(200);
+    const updated = (await patchRes.json()) as { jurisdictions: string[] };
+    expect(updated.jurisdictions).toEqual(['AR', 'UY']);
   });
 
   // ── PATCH ────────────────────────────────────────────────────────────────────
