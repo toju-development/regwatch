@@ -50,6 +50,8 @@ export const AlertSourceSchema = z.enum([
   // CL — Chile (MVP-13)
   'CMF_NORMAS',
   'CMF_RESOLUCIONES',
+  // MVP-15 — Email inbound via SendGrid Inbound Parse (sdd/email-inbound)
+  'EMAIL_INBOUND',
 ]);
 export type AlertSource = z.infer<typeof AlertSourceSchema>;
 

@@ -41,6 +41,19 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
        * Default: `http://localhost:3000` (local dev). Override in production.
        */
       APP_URL: z.string().url().default('http://localhost:3000'),
+      /**
+       * Feature flag — set to true to enable the email inbound endpoint.
+       * Default false so it can be rolled out without a redeploy.
+       * sdd/email-inbound REQ-2.
+       */
+      EMAIL_INBOUND_ENABLED: z.coerce.boolean().default(false),
+      /**
+       * ECDSA public key provided by SendGrid for webhook signature validation.
+       * Required when EMAIL_INBOUND_ENABLED=true. Optional at config level so
+       * the app boots without it (guard passthrough when unset — dev mode).
+       * sdd/email-inbound REQ-1.
+       */
+      EMAIL_INBOUND_WEBHOOK_SECRET: z.string().optional(),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,

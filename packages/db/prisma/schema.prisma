@@ -37,6 +37,8 @@ enum AlertSource {
   /// MVP-13 — Chile (CMF)
   CMF_NORMAS
   CMF_RESOLUCIONES
+  /// MVP-15 — Email inbound via SendGrid Inbound Parse (sdd/email-inbound)
+  EMAIL_INBOUND
 }
 
 // MVP-6 migration #9 (sdd/classifier-and-writer spec P1, B1.3):

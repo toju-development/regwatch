@@ -38,4 +38,8 @@ describe('AlertSource — Zod/Prisma enum sync', () => {
       expect(AlertSourceSchema.safeParse(v).success).toBe(true);
     }
   });
+
+  it('AlertSourceSchema includes MVP-15 EMAIL_INBOUND value', () => {
+    expect(AlertSourceSchema.safeParse('EMAIL_INBOUND').success).toBe(true);
+  });
 });
