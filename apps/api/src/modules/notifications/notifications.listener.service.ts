@@ -261,10 +261,13 @@ export class NotificationsListenerService {
       });
       if (!alert || alert.status === 'DISTRIBUTED') return; // already distributed
 
-      await this.prisma.alert.update({
-        where: { id: alertId },
+      // updateMany with status-based optimistic concurrency check — prevents double-DISTRIBUTED
+      // when two concurrent events race to call emitDistributed for the same alert.
+      const updateResult = await this.prisma.alert.updateMany({
+        where: { id: alertId, status: alert.status },
         data: { status: 'DISTRIBUTED' },
       });
+      if (updateResult.count === 0) return; // changed concurrently — another process won
 
       this.events.emit(ALERT_STATUS_CHANGED_EVENT, {
         alertId,

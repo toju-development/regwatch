@@ -74,6 +74,7 @@ function makePrisma(
         scanLog,
       }),
       update: vi.fn().mockResolvedValue(undefined),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       findUnique: vi.fn().mockResolvedValue({ name: 'Actor User', email: 'actor@test.local' }),
