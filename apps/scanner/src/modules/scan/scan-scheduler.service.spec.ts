@@ -210,7 +210,7 @@ describe('ScanSchedulerService.runTick', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('org-empty-jur'));
   });
 
-  it('dispatches AR and warns for unsupported MX', async () => {
+  it('dispatches AR and MX (both now supported in POST-10)', async () => {
     const orgs: OrgRow[] = [
       {
         id: 'org-ar-mx',
@@ -229,13 +229,11 @@ describe('ScanSchedulerService.runTick', () => {
     const { scan, runScan } = makeScan();
 
     const svc = new ScanSchedulerService(prisma, scan);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const warnSpy = vi.spyOn((svc as any).logger, 'warn');
     await svc.runTick(WED_08);
 
-    expect(runScan).toHaveBeenCalledTimes(1);
+    expect(runScan).toHaveBeenCalledTimes(2);
     expect(runScan).toHaveBeenCalledWith('org-ar-mx', 'AR');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('MX'));
+    expect(runScan).toHaveBeenCalledWith('org-ar-mx', 'MX');
   });
 
   it('dispatches once per supported jurisdiction when cadence matches', async () => {

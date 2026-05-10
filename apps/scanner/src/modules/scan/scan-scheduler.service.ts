@@ -27,12 +27,8 @@ import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { SCAN_SERVICE } from './tokens.js';
 import { ScanService } from './scan.service.js';
 import { shouldScanNow } from './utils/cadence.helper.js';
+import { SUPPORTED_JURISDICTIONS } from '@regwatch/types';
 
-/**
- * Single source of truth for jurisdictions this scanner can process.
- * MVP-13: AR + BR + CO + PE + CL.
- */
-export const SUPPORTED_JURISDICTIONS = ['AR', 'BR', 'CO', 'PE', 'CL'] as const;
 export type SupportedJurisdiction = (typeof SUPPORTED_JURISDICTIONS)[number];
 
 /**

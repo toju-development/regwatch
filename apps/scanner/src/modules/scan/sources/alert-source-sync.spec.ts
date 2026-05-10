@@ -42,4 +42,17 @@ describe('AlertSource — Zod/Prisma enum sync', () => {
   it('AlertSourceSchema includes MVP-15 EMAIL_INBOUND value', () => {
     expect(AlertSourceSchema.safeParse('EMAIL_INBOUND').success).toBe(true);
   });
+
+  it('AlertSourceSchema includes all POST-10 MX and UY values', () => {
+    const post10Values = [
+      'CNBV_CIRCULARES',
+      'CNBV_RESOLUCIONES',
+      'BANXICO_CIRCULARES',
+      'BCU_CIRCULARES',
+      'BCU_COMUNICACIONES',
+    ];
+    for (const v of post10Values) {
+      expect(AlertSourceSchema.safeParse(v).success).toBe(true);
+    }
+  });
 });

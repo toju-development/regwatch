@@ -1,10 +1,11 @@
 /**
- * Unit tests for `sourcesFor()` in root.agent.ts (MVP-13 extension).
+ * Unit tests for `sourcesFor()` in root.agent.ts (MVP-13 extension, POST-10 MX+UY).
  *
  * Verifies that each supported jurisdiction returns its correct SourceSpec[]
  * and that unknown jurisdictions throw a clear error.
  *
- * Spec: sdd/scanners-br-co-pe-cl/spec R-sourcesFor-Returns-Correct-SourceSpec.
+ * Spec: sdd/scanners-br-co-pe-cl/spec R-sourcesFor-Returns-Correct-SourceSpec;
+ *       sdd/jurisdictions-v2/spec R-JV-2.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -12,7 +13,9 @@ import { AR_SOURCES } from '../sources/ar.js';
 import { BR_SOURCES } from '../sources/br.js';
 import { CL_SOURCES } from '../sources/cl.js';
 import { CO_SOURCES } from '../sources/co.js';
+import { MX_SOURCES } from '../sources/mx.js';
 import { PE_SOURCES } from '../sources/pe.js';
+import { UY_SOURCES } from '../sources/uy.js';
 import { sourcesFor } from './root.agent.js';
 
 describe('sourcesFor()', () => {
@@ -36,13 +39,21 @@ describe('sourcesFor()', () => {
     expect(sourcesFor('CL')).toBe(CL_SOURCES);
   });
 
-  it('throws for an unsupported jurisdiction', () => {
-    expect(() => sourcesFor('MX')).toThrow(/unsupported jurisdiction/i);
-    expect(() => sourcesFor('')).toThrow();
-    expect(() => sourcesFor('UY')).toThrow(/unsupported jurisdiction/i);
+  it('returns MX_SOURCES for MX', () => {
+    expect(sourcesFor('MX')).toBe(MX_SOURCES);
   });
 
-  it.each(['AR', 'BR', 'CO', 'PE', 'CL'])(
+  it('returns UY_SOURCES for UY', () => {
+    expect(sourcesFor('UY')).toBe(UY_SOURCES);
+  });
+
+  it('throws for an unsupported jurisdiction', () => {
+    expect(() => sourcesFor('EC')).toThrow(/unsupported jurisdiction/i);
+    expect(() => sourcesFor('')).toThrow();
+    expect(() => sourcesFor('XX')).toThrow(/unsupported jurisdiction/i);
+  });
+
+  it.each(['AR', 'BR', 'CO', 'PE', 'CL', 'MX', 'UY'])(
     'sourcesFor(%s) returns a non-empty array',
     (jurisdiction) => {
       const sources = sourcesFor(jurisdiction);
