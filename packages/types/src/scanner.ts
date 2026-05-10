@@ -52,8 +52,23 @@ export const AlertSourceSchema = z.enum([
   'CMF_RESOLUCIONES',
   // MVP-15 — Email inbound via SendGrid Inbound Parse (sdd/email-inbound)
   'EMAIL_INBOUND',
+  // POST-10 — Mexico (CNBV + BANXICO)
+  'CNBV_CIRCULARES',
+  'CNBV_RESOLUCIONES',
+  'BANXICO_CIRCULARES',
+  // POST-10 — Uruguay (BCU)
+  'BCU_CIRCULARES',
+  'BCU_COMUNICACIONES',
 ]);
 export type AlertSource = z.infer<typeof AlertSourceSchema>;
+
+/**
+ * Jurisdictions supported by the scanner pipeline.
+ * POST-10: MX + UY added. Imported by both apps/scanner and apps/web to
+ * avoid hardcoded lists and cross-app coupling.
+ */
+export const SUPPORTED_JURISDICTIONS = ['AR', 'BR', 'CO', 'PE', 'CL', 'MX', 'UY'] as const;
+export type SupportedJurisdiction = (typeof SUPPORTED_JURISDICTIONS)[number];
 
 /**
  * Single regulator finding produced by the per-jurisdiction LLM agent.
