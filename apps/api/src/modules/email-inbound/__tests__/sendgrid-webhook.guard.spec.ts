@@ -8,7 +8,7 @@
  *   (b) Invalid signature → throws ForbiddenException
  *   (c) Valid ECDSA signature (pre-signed test fixture) → returns true
  *
- * ECDSA test fixture: secp256k1 / SHA-256 pair generated inline using
+ * ECDSA test fixture: prime256v1 (P-256) / SHA-256 pair generated inline using
  * Node's `crypto.generateKeyPairSync`. We sign a known payload and verify
  * that the guard accepts it.
  */
