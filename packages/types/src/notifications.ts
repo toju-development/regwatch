@@ -28,7 +28,7 @@ export interface NotificationContext {
   actorName: string;
   /** null when the alert is unassigned. */
   assigneeName: string | null;
-  /** Slack Incoming Webhook URL resolved from `notification_channels` row. */
+  /** Incoming Webhook URL resolved from `notification_channels` row (provider-agnostic). */
   webhookUrl: string;
 }
 
