@@ -31,15 +31,20 @@ const baseDto = {
   envelope: JSON.stringify({ to: ['acme@inbound.regwatch.io'], from: 'sender@example.com' }),
 };
 
-function makePrismaMock(opts?: { orgId?: string | null; upsertId?: string }) {
+function makePrismaMock(opts?: {
+  orgId?: string | null;
+  upsertId?: string;
+  upsertEnrichmentStatus?: string;
+}) {
   const orgId = opts?.orgId !== undefined ? opts.orgId : 'org-abc';
   const upsertId = opts?.upsertId ?? 'alert-xyz';
+  const upsertEnrichmentStatus = opts?.upsertEnrichmentStatus ?? undefined;
   return {
     organization: {
       findUnique: vi.fn().mockResolvedValue(orgId ? { id: orgId } : null),
     },
     alert: {
-      upsert: vi.fn().mockResolvedValue({ id: upsertId }),
+      upsert: vi.fn().mockResolvedValue({ id: upsertId, enrichmentStatus: upsertEnrichmentStatus }),
     },
   };
 }
@@ -106,7 +111,11 @@ describe('EmailInboundService.handle', () => {
   });
 
   it('(d) happy path → alert created + fireTrigger called once', async () => {
-    const prisma = makePrismaMock({ orgId: 'org-abc', upsertId: 'alert-new' });
+    const prisma = makePrismaMock({
+      orgId: 'org-abc',
+      upsertId: 'alert-new',
+      upsertEnrichmentStatus: 'PENDING',
+    });
     const service = makeService(prisma, makeEnv(true));
 
     await service.handle(baseDto);

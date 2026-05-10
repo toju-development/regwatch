@@ -99,11 +99,14 @@ export class EmailInboundService {
         jurisdiction: null,
       },
       update: {},
-      select: { id: true },
+      select: { id: true, enrichmentStatus: true },
     });
 
-    // REQ-5: fire-and-forget enrichment trigger.
-    this.fireTrigger(alert.id, org.id);
+    // REQ-5: fire-and-forget enrichment trigger — only when alert is PENDING.
+    // On dedup (existing alert), enrichmentStatus is already set; skip to avoid re-triggering.
+    if (alert.enrichmentStatus === 'PENDING') {
+      this.fireTrigger(alert.id, org.id);
+    }
   }
 
   /**
@@ -112,7 +115,8 @@ export class EmailInboundService {
    * ADR-1: 5s timeout.
    */
   private fireTrigger(alertId: string, organizationId: string): void {
-    const url = `${this.env.SCANNER_INTERNAL_URL}/enrich/trigger`;
+    // Issue 4: use URL constructor to avoid double-slash when SCANNER_INTERNAL_URL has trailing slash.
+    const url = new URL('/enrich/trigger', this.env.SCANNER_INTERNAL_URL).toString();
     const secret = this.env.SCANNER_INTERNAL_SECRET;
 
     const controller = new AbortController();
