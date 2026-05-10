@@ -7,6 +7,7 @@
  *   - `EMAIL_INBOUND_PRISMA_TOKEN` → global `PrismaClient` singleton from `PrismaModule`.
  *   - `EMAIL_INBOUND_ENV_TOKEN` → the validated API env slice.
  *   - `EmailInboundService` — business logic.
+ *   - `SendGridWebhookGuard` — ECDSA signature verifier (injected into controller).
  *   - `EmailInboundController` — HTTP controller.
  *
  * `PrismaModule` is `@Global()` so `PRISMA_CLIENT` is available without
@@ -20,6 +21,7 @@ import { Module } from '@nestjs/common';
 import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { EmailInboundController } from './email-inbound.controller.js';
 import { EmailInboundService } from './email-inbound.service.js';
+import { SendGridWebhookGuard } from './guards/sendgrid-webhook.guard.js';
 import { EMAIL_INBOUND_PRISMA_TOKEN, EMAIL_INBOUND_ENV_TOKEN } from './tokens.js';
 import { env } from '../../env.js';
 
@@ -35,6 +37,7 @@ import { env } from '../../env.js';
       useValue: env,
     },
     EmailInboundService,
+    SendGridWebhookGuard,
   ],
 })
 export class EmailInboundModule {}

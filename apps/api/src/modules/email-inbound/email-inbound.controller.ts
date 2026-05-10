@@ -4,23 +4,31 @@
  * sdd/email-inbound REQ-1 (public endpoint, always 200).
  *
  * This endpoint is intentionally @Public() — SendGrid does not send a JWT.
- * Signature validation is handled by `SendGridWebhookGuard`.
+ * Signature validation is performed inline via `SendGridWebhookGuard.verify()`.
+ * Failures are absorbed (log + return { ok: true }) to preserve the always-200
+ * contract — SendGrid retries on non-2xx.
  *
- * Error handling: ALL errors are caught and logged; the response is always
- * HTTP 200 `{ ok: true }` so SendGrid does not retry (retries on non-2xx).
+ * Multipart: SendGrid posts `multipart/form-data`. `AnyFilesInterceptor()` from
+ * `@nestjs/platform-express` runs multer, which populates `req.body` with the
+ * parsed fields (to, from, subject, text, html, headers, envelope, …).
  *
- * Foot-gun #667: explicit @Inject(EmailInboundService).
+ * rawBody: NestFactory is created with `{ rawBody: true }` so `req.rawBody`
+ * holds the raw Buffer needed for ECDSA signature verification.
+ *
+ * Foot-gun #667: explicit @Inject tokens.
  */
 import {
-  Body,
   Controller,
   HttpCode,
   HttpStatus,
   Inject,
   Logger,
   Post,
-  UseGuards,
+  Req,
+  UseInterceptors,
 } from '@nestjs/common';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import type { Request } from 'express';
 import { Public } from '../../common/auth/public.decorator.js';
 import { SendGridWebhookGuard } from './guards/sendgrid-webhook.guard.js';
 import { EmailInboundService } from './email-inbound.service.js';
@@ -30,7 +38,10 @@ import { ParsedEmailDtoSchema } from './dto/parsed-email.dto.js';
 export class EmailInboundController {
   private readonly logger = new Logger(EmailInboundController.name);
 
-  constructor(@Inject(EmailInboundService) private readonly service: EmailInboundService) {}
+  constructor(
+    @Inject(EmailInboundService) private readonly service: EmailInboundService,
+    @Inject(SendGridWebhookGuard) private readonly guard: SendGridWebhookGuard,
+  ) {}
 
   /**
    * `POST /inbound/email` — receive a SendGrid Inbound Parse webhook.
@@ -40,11 +51,17 @@ export class EmailInboundController {
    */
   @Post('inbound/email')
   @Public()
-  @UseGuards(SendGridWebhookGuard)
+  @UseInterceptors(AnyFilesInterceptor())
   @HttpCode(HttpStatus.OK)
-  async receive(@Body() rawBody: unknown): Promise<{ ok: true }> {
+  async receive(@Req() req: Request): Promise<{ ok: true }> {
     try {
-      const result = ParsedEmailDtoSchema.safeParse(rawBody);
+      // Inline signature verification — absorb failure, never throw.
+      if (!this.guard.verify(req)) {
+        this.logger.warn('Invalid SendGrid webhook signature — dropping silently');
+        return { ok: true };
+      }
+
+      const result = ParsedEmailDtoSchema.safeParse(req.body);
       if (!result.success) {
         this.logger.warn(`Invalid inbound email payload: ${JSON.stringify(result.error.issues)}`);
         return { ok: true };
