@@ -34,6 +34,11 @@ const SETTINGS_LINKS: ReadonlyArray<{ href: string; label: string; description: 
     label: 'Usage',
     description: 'Monthly LLM cost vs the $10/mo cap.',
   },
+  {
+    href: '/settings/notifications',
+    label: 'Notifications',
+    description: 'Manage Slack, Teams and Email alert channels.',
+  },
 ];
 
 export default async function SettingsIndexPage(): Promise<React.ReactElement> {

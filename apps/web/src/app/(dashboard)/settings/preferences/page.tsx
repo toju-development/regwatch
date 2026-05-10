@@ -42,9 +42,10 @@ interface SettingsWire {
   settings: {
     organizationId: string;
     jurisdictions: SettingsJurisdictions;
-    scanSchedule: 'daily' | 'weekly' | 'custom';
+    scanSchedule: 'daily' | 'weekly' | 'custom' | 'monthly';
     scanDay: string;
     scanHour: number;
+    scanDayOfMonth?: number;
     updatedAt: string;
   };
 }
@@ -125,6 +126,7 @@ export default async function PreferencesSettingsPage(): Promise<React.ReactElem
           scanSchedule: body.settings.scanSchedule,
           scanDay: body.settings.scanDay,
           scanHour: body.settings.scanHour,
+          scanDayOfMonth: body.settings.scanDayOfMonth,
         }}
       />
     </main>
