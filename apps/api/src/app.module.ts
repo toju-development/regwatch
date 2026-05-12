@@ -18,6 +18,7 @@ import { AlertsModule } from './modules/alerts/alerts.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { EmailInboundModule } from './modules/email-inbound/email-inbound.module.js';
 import { DigestModule } from './modules/digest/digest.module.js';
+import { BillingModule } from './modules/billing/billing.module.js';
 import { TestOnlyModule } from './common/auth/__test-only__/test-only.module.js';
 import { env } from './env.js';
 
@@ -59,6 +60,7 @@ function conditionalImports(): NonNullable<DynamicModule['imports']> {
     NotificationsModule,
     EmailInboundModule,
     DigestModule,
+    BillingModule,
   ];
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
     base.push(TestOnlyModule);

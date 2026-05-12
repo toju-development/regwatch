@@ -19,3 +19,4 @@ export * from './security/index.js';
 export * from './enrichment.js';
 export * from './collaboration.js';
 export * from './notifications.js';
+export * from './billing.js';

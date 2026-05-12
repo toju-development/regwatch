@@ -39,6 +39,11 @@ const SETTINGS_LINKS: ReadonlyArray<{ href: string; label: string; description: 
     label: 'Notifications',
     description: 'Manage Slack, Teams and Email alert channels.',
   },
+  {
+    href: '/settings/billing',
+    label: 'Billing',
+    description: 'Manage your plan and Stripe subscription.',
+  },
 ];
 
 export default async function SettingsIndexPage(): Promise<React.ReactElement> {
