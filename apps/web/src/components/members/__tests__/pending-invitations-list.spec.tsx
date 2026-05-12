@@ -17,9 +17,6 @@ import { PendingInvitationsList } from '../pending-invitations-list.js';
 import type { InvitationRowData } from '../pending-invitations-list.js';
 import { issueInvitationAction } from '../actions.js';
 
-import { PendingInvitationsList } from '../pending-invitations-list.js';
-import type { InvitationRowData } from '../pending-invitations-list.js';
-
 const invitations: ReadonlyArray<InvitationRowData> = [
   {
     id: 'inv-1',
@@ -60,19 +57,6 @@ describe('<PendingInvitationsList>', () => {
     await user.click(screen.getByTestId('pending-invitation-menu-inv-1'));
     await user.click(screen.getByTestId('pending-invitation-resend-trigger-inv-1'));
     expect(issueInvitationAction).toHaveBeenCalledWith('org-1', 'bob@example.com', 'ANALYST');
-  });
-
-  it('surfaces an error when Resend fails', async () => {
-    vi.mocked(issueInvitationAction).mockResolvedValueOnce({
-      ok: false,
-      error: 'Something went wrong',
-      code: 'UNKNOWN' as never,
-    });
-    const user = userEvent.setup();
-    render(<PendingInvitationsList orgId="org-1" canManage={true} invitations={invitations} />);
-    await user.click(screen.getByTestId('pending-invitation-menu-inv-1'));
-    await user.click(screen.getByTestId('pending-invitation-resend-trigger-inv-1'));
-    expect(await screen.findByRole('alert')).toBeTruthy();
   });
 
   it('surfaces an error when Resend fails', async () => {

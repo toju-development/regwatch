@@ -126,7 +126,9 @@ export default async function PreferencesSettingsPage(): Promise<React.ReactElem
           scanSchedule: body.settings.scanSchedule,
           scanDay: body.settings.scanDay,
           scanHour: body.settings.scanHour,
-          scanDayOfMonth: body.settings.scanDayOfMonth,
+          ...(body.settings.scanDayOfMonth !== undefined && {
+            scanDayOfMonth: body.settings.scanDayOfMonth,
+          }),
         }}
       />
     </main>

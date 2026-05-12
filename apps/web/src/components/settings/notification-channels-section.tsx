@@ -118,7 +118,8 @@ function ChannelRow({
         )}
       </div>
       <Button
-        variant="destructive"
+        variant="outline"
+        className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
         size="sm"
         disabled={deleting}
         onClick={() => void handleDelete()}
