@@ -1,5 +1,5 @@
 /**
- * PlanGuard — enforces Free-plan limits on scanner-trigger and alert-creation
+ * PlanGuard — enforces Free-plan limits on ingest and alert-creation
  * endpoints. Applied at the route level via `@UseGuards(PlanGuard)`.
  *
  * sdd/billing-stripe POST-9 — Task 3.1.

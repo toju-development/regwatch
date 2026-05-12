@@ -126,14 +126,13 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
       // pattern as AUTH_FAKE_GOOGLE).
       AUTH_FAKE_ENTRA: z.string().optional(),
       // ---- Stripe billing (sdd/billing-stripe POST-9) ----
-      // Server-only: used when the Server Action calls apps/api to create
-      // a Checkout session. The price ID is needed to pass to the action.
-      STRIPE_PRO_PRICE_ID: z.string().min(1),
-      // Stripe publishable key — safe to expose to the browser but stored
-      // here in server block for consistency (web.ts uses env-core, not
-      // env-nextjs; Stripe-hosted Checkout does not require Stripe.js on
-      // the client — we just redirect to the Stripe-hosted URL).
-      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
+      // Optional: only required when billing is enabled. The web layer
+      // redirects to the Stripe-hosted Checkout URL built by the API —
+      // these vars are not strictly needed at runtime unless the web app
+      // builds the session itself.
+      STRIPE_PRO_PRICE_ID: z.string().min(1).optional(),
+      // Stripe publishable key — safe to expose to the browser.
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,

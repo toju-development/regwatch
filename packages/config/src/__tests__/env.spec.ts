@@ -33,7 +33,8 @@ const baseEnv = {
 const validWebEnv = () => ({
   ...baseEnv,
   API_URL: 'http://localhost:4000',
-  // sdd/billing-stripe POST-9 — required by createWebEnv
+  // sdd/billing-stripe POST-9 — optional in createWebEnv; included here for
+  // completeness but omitting them should also parse successfully.
   STRIPE_PRO_PRICE_ID: 'price_test_placeholder',
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_placeholder',
 });

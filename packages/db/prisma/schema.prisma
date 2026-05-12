@@ -554,6 +554,4 @@ model Subscription {
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([stripeCustomerId])
 }

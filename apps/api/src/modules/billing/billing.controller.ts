@@ -102,8 +102,9 @@ export class BillingController {
   @Roles('OWNER')
   @HttpCode(HttpStatus.CREATED)
   async createCheckoutSession(@CurrentOrg() orgId: string): Promise<{ url: string }> {
-    const successUrl = `${this.env.APP_URL}/settings/billing?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${this.env.APP_URL}/settings/billing`;
+    const base = this.env.APP_URL.replace(/\/$/, '');
+    const successUrl = `${base}/settings/billing?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${base}/settings/billing`;
 
     return this.billingService.createCheckoutSession(orgId, successUrl, cancelUrl);
   }
