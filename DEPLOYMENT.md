@@ -108,19 +108,22 @@ echo -n "VALUE" | gcloud secrets create SECRET_NAME \
 
 ### regwatch-web secrets
 
-| Secret name           | Description                                                      | Required |
-| --------------------- | ---------------------------------------------------------------- | -------- |
-| `AUTH_SECRET`         | Same as api                                                      | ✅       |
-| `DATABASE_URL`        | Same Cloud SQL connection string                                 | ✅       |
-| `NEXT_PUBLIC_API_URL` | Public URL of regwatch-api                                       | ✅       |
-| `API_URL`             | Internal Cloud Run URL of regwatch-api                           | ✅       |
-| `AUTH_URL`            | Public URL of regwatch-web (e.g. `https://regwatch.example.com`) | ✅       |
-| `AUTH_GOOGLE_ID`      | Google OAuth client ID                                           | ✅       |
-| `AUTH_GOOGLE_SECRET`  | Google OAuth client secret                                       | ✅       |
-| `AUTH_RESEND_KEY`     | Resend API key for magic link                                    | ✅       |
-| `AUTH_EMAIL_FROM`     | Magic link sender address                                        | ✅       |
-| `JWT_ISSUER`          | Same as api                                                      | ✅       |
-| `JWT_AUDIENCE`        | Same as api                                                      | ✅       |
+| Secret name                      | Description                                                      | Required |
+| -------------------------------- | ---------------------------------------------------------------- | -------- |
+| `AUTH_SECRET`                    | Same as api                                                      | ✅       |
+| `DATABASE_URL`                   | Same Cloud SQL connection string                                 | ✅       |
+| `NEXT_PUBLIC_API_URL`            | Public URL of regwatch-api                                       | ✅       |
+| `API_URL`                        | Internal Cloud Run URL of regwatch-api                           | ✅       |
+| `AUTH_URL`                       | Public URL of regwatch-web (e.g. `https://regwatch.example.com`) | ✅       |
+| `AUTH_GOOGLE_ID`                 | Google OAuth client ID                                           | ✅       |
+| `AUTH_GOOGLE_SECRET`             | Google OAuth client secret                                       | ✅       |
+| `AUTH_RESEND_KEY`                | Resend API key for magic link                                    | ✅       |
+| `AUTH_EMAIL_FROM`                | Magic link sender address                                        | ✅       |
+| `JWT_ISSUER`                     | Same as api                                                      | ✅       |
+| `JWT_AUDIENCE`                   | Same as api                                                      | ✅       |
+| `AUTH_MICROSOFT_ENTRA_ID`        | Azure App Registration client ID (optional — Entra SSO)          | ⬜       |
+| `AUTH_MICROSOFT_ENTRA_SECRET`    | Azure client secret (optional — Entra SSO)                       | ⬜       |
+| `AUTH_MICROSOFT_ENTRA_TENANT_ID` | Azure tenant ID; use `common` for multi-tenant (optional)        | ⬜       |
 
 ---
 
@@ -164,6 +167,54 @@ for SVC in regwatch-api regwatch-scanner regwatch-web; do
     --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
 done
 ```
+
+---
+
+## 3a. Microsoft Entra ID Setup (Optional)
+
+Microsoft Entra ID (Azure AD) enables enterprise SSO for your users. The feature is **off by default** — the app starts normally with no Entra vars set.
+
+### When to enable
+
+Set all three `AUTH_MICROSOFT_ENTRA_*` secrets when you want to allow sign-in with Microsoft / Azure AD accounts.
+
+> **All-or-nothing**: you must set all three vars together. Setting one or two will cause the app to throw at startup (`INV-ENTRA-1`). Rollback = remove all three vars.
+
+### Azure App Registration
+
+1. Go to [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) and click **New registration**.
+2. Name: e.g. `RegWatch`; supported account types: _Accounts in any organizational directory and personal Microsoft accounts_ (multi-tenant) or restrict to your tenant.
+3. Under **Redirect URIs**, add:
+   ```
+   https://<your-domain>/api/auth/callback/microsoft-entra-id
+   ```
+4. After creation, copy the **Application (client) ID** → `AUTH_MICROSOFT_ENTRA_ID`.
+5. Go to **Certificates & secrets → New client secret**, copy the **Value** → `AUTH_MICROSOFT_ENTRA_SECRET`.
+6. For **Tenant ID**:
+   - Multi-tenant / personal accounts: use `common`
+   - Single Azure AD directory: use your Directory (tenant) ID
+
+### Secrets to create
+
+```bash
+echo -n "<App client ID>"     | gcloud secrets create AUTH_MICROSOFT_ENTRA_ID     --data-file=- --replication-policy=automatic
+echo -n "<Client secret>"     | gcloud secrets create AUTH_MICROSOFT_ENTRA_SECRET  --data-file=- --replication-policy=automatic
+echo -n "common"              | gcloud secrets create AUTH_MICROSOFT_ENTRA_TENANT_ID --data-file=- --replication-policy=automatic
+```
+
+Then mount in `regwatch-web`:
+
+```bash
+gcloud run services update regwatch-web \
+  --region=$REGION \
+  --update-secrets=AUTH_MICROSOFT_ENTRA_ID=AUTH_MICROSOFT_ENTRA_ID:latest,\
+AUTH_MICROSOFT_ENTRA_SECRET=AUTH_MICROSOFT_ENTRA_SECRET:latest,\
+AUTH_MICROSOFT_ENTRA_TENANT_ID=AUTH_MICROSOFT_ENTRA_TENANT_ID:latest
+```
+
+### Rollback
+
+Remove all three env vars from the Cloud Run service — the provider is absent when vars are unset, no code deploy needed.
 
 ---
 

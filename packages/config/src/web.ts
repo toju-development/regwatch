@@ -43,7 +43,7 @@ export function parseInvitedEmails(raw: string): Set<string> {
 /**
  * Web env slice — apps/web (Next.js 15).
  *
- * Composes core + NextAuth/Resend/fake-google vars.
+ * Composes core + NextAuth/Resend/fake-google/microsoft-entra vars.
  * Spec: auth-foundation § config — Per-app env slices.
  * Operator decision (#624): MEMORY transport + FAKE google in dev/CI;
  *   real Resend / Google deferred to a deploy slice.
@@ -55,11 +55,14 @@ export function parseInvitedEmails(raw: string): Set<string> {
  *       AUTH_EMAIL_FROM (no silent fallback — Q4 lock);
  *     - AUTH_FAKE_GOOGLE gates the dev-only fake-google credentials
  *       provider mount.
+ *   Microsoft Entra ID vars are individually optional but all-or-nothing:
+ *     if 1 or 2 of the 3 vars are set, createWebEnv() throws at startup
+ *     (spec R-ENTRA-2 / INV-ENTRA-1).
  *
  * @param runtimeEnv override for tests; defaults to `process.env` at call time.
  */
 export function createWebEnv(runtimeEnv: Record<string, string | undefined> = process.env) {
-  return createEnv({
+  const env = createEnv({
     extends: [createCoreEnv(runtimeEnv)],
     server: {
       AUTH_URL: z.string().url().optional(),
@@ -111,6 +114,17 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
             return z.NEVER;
           }
         }),
+      // ---- Microsoft Entra ID (sdd/auth-ms-entra) ----
+      // Three individually optional vars; all must be set together or all
+      // absent. Partial config throws at startup via the all-or-nothing guard
+      // below (spec R-ENTRA-2 / INV-ENTRA-1).
+      AUTH_MICROSOFT_ENTRA_ID: z.string().optional(),
+      AUTH_MICROSOFT_ENTRA_SECRET: z.string().optional(),
+      AUTH_MICROSOFT_ENTRA_TENANT_ID: z.string().optional(),
+      // Dev-only fake Entra Credentials provider — mounted when set to 'true'.
+      // By convention, production deployments do not set this var (same
+      // pattern as AUTH_FAKE_GOOGLE).
+      AUTH_FAKE_ENTRA: z.string().optional(),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
@@ -120,6 +134,27 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
     // Playwright, dev) does NOT set this flag → validation runs as usual.
     skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   });
+
+  // All-or-nothing Entra guard (R-ENTRA-2 / INV-ENTRA-1):
+  // Partial config (1 or 2 of 3 vars set) is always a misconfiguration —
+  // fail fast at startup rather than silently mounting no provider.
+  // We skip this check under SKIP_ENV_VALIDATION (build-time bypass).
+  if (!process.env.SKIP_ENV_VALIDATION) {
+    const entraRaw = [
+      runtimeEnv['AUTH_MICROSOFT_ENTRA_ID'],
+      runtimeEnv['AUTH_MICROSOFT_ENTRA_SECRET'],
+      runtimeEnv['AUTH_MICROSOFT_ENTRA_TENANT_ID'],
+    ].filter((v) => !!v && v.length > 0); // treat empty strings as absent
+    if (entraRaw.length > 0 && entraRaw.length < 3) {
+      throw new Error(
+        'AUTH_MICROSOFT_ENTRA_ID, AUTH_MICROSOFT_ENTRA_SECRET, and ' +
+          'AUTH_MICROSOFT_ENTRA_TENANT_ID must all be set or all be absent ' +
+          `(${entraRaw.length}/3 vars found)`,
+      );
+    }
+  }
+
+  return env;
 }
 
 export type WebEnv = ReturnType<typeof createWebEnv>;

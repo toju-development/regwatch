@@ -28,8 +28,8 @@ import { type MembershipClaim } from '@regwatch/types';
 
 import { env } from '@/env';
 import { authConfig } from '@/lib/auth.config';
+import { buildProviders } from '@/lib/auth-config';
 import { memoryEmailProvider } from '@/lib/auth-email/memory-transport';
-import { fakeGoogleProvider } from '@/lib/auth-providers/fake-google';
 import { fetchMemberships, fetchMembershipsVersion } from '@/lib/auth-memberships';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
 import { clearActiveOrgOnSignOut } from '@/lib/auth-signout';
@@ -82,11 +82,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma) as ReturnType<typeof PrismaAdapter>,
   secret: env.AUTH_SECRET,
   session: { strategy: 'jwt', maxAge: JWT_MAX_AGE_SECONDS },
-  providers: [
-    ...authConfig.providers,
-    resolveEmailProvider(),
-    ...(env.AUTH_FAKE_GOOGLE ? [fakeGoogleProvider()] : []),
-  ],
+  providers: [...authConfig.providers, resolveEmailProvider(), ...buildProviders(env)],
 
   // R-Sign: HS256 JWS override — see file header.
   jwt: {
