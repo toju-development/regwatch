@@ -66,8 +66,8 @@ describe('UpdateSettingsSchema — invalid bodies', () => {
 });
 
 describe('DEFAULT_SETTINGS', () => {
-  it('has all 7 jurisdictions enabled and weekly/mon/8 cadence', () => {
-    expect(DEFAULT_SETTINGS.jurisdictions).toHaveLength(7);
+  it('has all 9 jurisdictions enabled and weekly/mon/8 cadence', () => {
+    expect(DEFAULT_SETTINGS.jurisdictions).toHaveLength(9);
     expect(DEFAULT_SETTINGS.jurisdictions.every((j) => j.enabled)).toBe(true);
     expect(DEFAULT_SETTINGS.scanSchedule).toBe('weekly');
     expect(DEFAULT_SETTINGS.scanDay).toBe('mon');

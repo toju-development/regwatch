@@ -13,7 +13,9 @@ import { AR_SOURCES } from '../sources/ar.js';
 import { BR_SOURCES } from '../sources/br.js';
 import { CL_SOURCES } from '../sources/cl.js';
 import { CO_SOURCES } from '../sources/co.js';
+import { EC_SOURCES } from '../sources/ec.js';
 import { MX_SOURCES } from '../sources/mx.js';
+import { PA_SOURCES } from '../sources/pa.js';
 import { PE_SOURCES } from '../sources/pe.js';
 import { UY_SOURCES } from '../sources/uy.js';
 import {
@@ -56,9 +58,13 @@ export function sourcesFor(jurisdiction: string) {
       return MX_SOURCES;
     case 'UY':
       return UY_SOURCES;
+    case 'EC':
+      return EC_SOURCES;
+    case 'PA':
+      return PA_SOURCES;
     default:
       throw new Error(
-        `RootAgent: unsupported jurisdiction "${jurisdiction}" — supported: AR, BR, CO, PE, CL, MX, UY.`,
+        `RootAgent: unsupported jurisdiction "${jurisdiction}" — supported: AR, BR, CO, PE, CL, MX, UY, EC, PA.`,
       );
   }
 }
