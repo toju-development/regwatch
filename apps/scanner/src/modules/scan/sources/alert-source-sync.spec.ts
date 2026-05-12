@@ -55,4 +55,16 @@ describe('AlertSource — Zod/Prisma enum sync', () => {
       expect(AlertSourceSchema.safeParse(v).success).toBe(true);
     }
   });
+
+  it('AlertSourceSchema includes all POST-10b EC and PA values', () => {
+    const post10bValues = [
+      'SB_EC_RESOLUCIONES',
+      'SB_EC_CIRCULARES',
+      'SBP_ACUERDOS',
+      'SBP_RESOLUCIONES',
+    ];
+    for (const v of post10bValues) {
+      expect(AlertSourceSchema.safeParse(v).success).toBe(true);
+    }
+  });
 });

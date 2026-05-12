@@ -59,15 +59,30 @@ export const AlertSourceSchema = z.enum([
   // POST-10 — Uruguay (BCU)
   'BCU_CIRCULARES',
   'BCU_COMUNICACIONES',
+  // POST-10b — Ecuador (SB_EC) and Panama (SBP)
+  'SB_EC_RESOLUCIONES',
+  'SB_EC_CIRCULARES',
+  'SBP_ACUERDOS',
+  'SBP_RESOLUCIONES',
 ]);
 export type AlertSource = z.infer<typeof AlertSourceSchema>;
 
 /**
  * Jurisdictions supported by the scanner pipeline.
- * POST-10: MX + UY added. Imported by both apps/scanner and apps/web to
- * avoid hardcoded lists and cross-app coupling.
+ * Imported by both apps/scanner and apps/web to avoid hardcoded lists
+ * and cross-app coupling. Extend this list when adding new jurisdictions.
  */
-export const SUPPORTED_JURISDICTIONS = ['AR', 'BR', 'CO', 'PE', 'CL', 'MX', 'UY'] as const;
+export const SUPPORTED_JURISDICTIONS = [
+  'AR',
+  'BR',
+  'CO',
+  'PE',
+  'CL',
+  'MX',
+  'UY',
+  'EC',
+  'PA',
+] as const;
 export type SupportedJurisdiction = (typeof SUPPORTED_JURISDICTIONS)[number];
 
 /**

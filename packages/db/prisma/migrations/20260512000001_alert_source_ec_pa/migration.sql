@@ -1,0 +1,7 @@
+-- POST-10b: Add AlertSource values for Ecuador (SB_EC) and Panama (SBP).
+-- Pure-additive. IF NOT EXISTS makes this idempotent.
+
+ALTER TYPE "AlertSource" ADD VALUE IF NOT EXISTS 'SB_EC_RESOLUCIONES';
+ALTER TYPE "AlertSource" ADD VALUE IF NOT EXISTS 'SB_EC_CIRCULARES';
+ALTER TYPE "AlertSource" ADD VALUE IF NOT EXISTS 'SBP_ACUERDOS';
+ALTER TYPE "AlertSource" ADD VALUE IF NOT EXISTS 'SBP_RESOLUCIONES';

@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe('<PreferencesForm>', () => {
-  it('renders all 7 jurisdictions seeded from initial values', () => {
+  it('renders all 9 jurisdictions seeded from initial values', () => {
     render(
       <PreferencesForm
         orgId="org-1"
@@ -117,7 +117,7 @@ describe('<PreferencesForm>', () => {
       scanDay: 'mon',
       scanHour: 8,
     });
-    expect((payload as { jurisdictions: unknown[] }).jurisdictions).toHaveLength(7);
+    expect((payload as { jurisdictions: unknown[] }).jurisdictions).toHaveLength(9);
     await screen.findByTestId('preferences-form-success');
   });
 

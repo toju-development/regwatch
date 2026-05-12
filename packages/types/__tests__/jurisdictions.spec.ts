@@ -9,9 +9,9 @@ import {
 } from '../src/jurisdictions.js';
 
 describe('jurisdictions registry', () => {
-  it('exports the 7 LatAm members in canonical shape', () => {
-    expect(JURISDICTIONS).toHaveLength(7);
-    expect(JURISDICTION_CODES).toEqual(['MX', 'CO', 'PE', 'CL', 'AR', 'UY', 'BR']);
+  it('exports the 9 LatAm members in canonical shape', () => {
+    expect(JURISDICTIONS).toHaveLength(9);
+    expect(JURISDICTION_CODES).toEqual(['MX', 'CO', 'PE', 'CL', 'AR', 'UY', 'BR', 'EC', 'PA']);
 
     for (const j of JURISDICTIONS) {
       expect(j.code).toMatch(/^[A-Z]{2}$/);

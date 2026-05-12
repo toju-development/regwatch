@@ -46,6 +46,11 @@ enum AlertSource {
   /// POST-10 — Uruguay (BCU)
   BCU_CIRCULARES
   BCU_COMUNICACIONES
+  /// POST-10b — Ecuador (SB_EC) and Panama (SBP)
+  SB_EC_RESOLUCIONES
+  SB_EC_CIRCULARES
+  SBP_ACUERDOS
+  SBP_RESOLUCIONES
 }
 
 // MVP-6 migration #9 (sdd/classifier-and-writer spec P1, B1.3):

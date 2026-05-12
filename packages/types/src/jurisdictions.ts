@@ -38,6 +38,8 @@ export const JURISDICTIONS = [
   { code: 'AR', name: 'Argentina', region: 'LATAM' },
   { code: 'UY', name: 'Uruguay', region: 'LATAM' },
   { code: 'BR', name: 'Brasil', region: 'LATAM' },
+  { code: 'EC', name: 'Ecuador', region: 'LATAM' },
+  { code: 'PA', name: 'Panamá', region: 'LATAM' },
 ] as const satisfies readonly Jurisdiction[];
 
 /** Authoring-shape literal union, derived from {@link JURISDICTIONS}. */

@@ -211,7 +211,7 @@ describe.skipIf(!dbAvailable)('SettingsController (HTTP integration)', () => {
   // ------------------------------------------------------------------ //
 
   describe('GET /org/:orgId/settings', () => {
-    it('cold-creates the row with 7-LatAm defaults (weekly/mon/8) on first GET', async () => {
+    it('cold-creates the row with 9-LatAm defaults (weekly/mon/8) on first GET', async () => {
       const { org, actor } = await seed('VIEWER');
       const jwt = await getJwt(actor, org, 'VIEWER');
 
@@ -230,7 +230,7 @@ describe.skipIf(!dbAvailable)('SettingsController (HTTP integration)', () => {
         };
       };
       expect(body.settings.jurisdictions.map((j) => j.code).sort()).toEqual(
-        ['AR', 'BR', 'CL', 'CO', 'MX', 'PE', 'UY'].sort(),
+        ['AR', 'BR', 'CL', 'CO', 'EC', 'MX', 'PA', 'PE', 'UY'].sort(),
       );
       expect(body.settings.jurisdictions.every((j) => j.enabled)).toBe(true);
       expect(body.settings.scanSchedule).toBe('weekly');

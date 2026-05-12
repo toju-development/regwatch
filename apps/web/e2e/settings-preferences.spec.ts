@@ -176,7 +176,7 @@ async function seedMember(
 
 // All 7 jurisdictions in the canonical registry order (per
 // packages/types/src/jurisdictions.ts). Used to assert each row renders.
-const ALL_CODES = ['MX', 'CO', 'PE', 'CL', 'AR', 'UY', 'BR'] as const;
+const ALL_CODES = ['MX', 'CO', 'PE', 'CL', 'AR', 'UY', 'BR', 'EC', 'PA'] as const;
 
 // ─── Tests ────────────────────────────────────────────────────────────────
 
@@ -378,7 +378,7 @@ test.describe('Settings — Preferences page', () => {
         }
       });
 
-      // Uncheck all 7 jurisdictions.
+      // Uncheck all 9 jurisdictions.
       for (const code of ALL_CODES) {
         await page.getByTestId(`preferences-form-jurisdiction-${code}-enabled`).uncheck();
       }
