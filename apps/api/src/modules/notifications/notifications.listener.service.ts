@@ -1,11 +1,15 @@
 /**
  * NotificationsListenerService — handles alert lifecycle events and fans out
- * Slack notifications to all matching channels via `Promise.allSettled`.
+ * notifications to all matching channels via `Promise.allSettled`.
+ *
+ * sdd/notify-teams (POST-1):
+ *   - Inject `NotificationAdapterRegistry` instead of a single port.
+ *   - Use `findAllActiveChannels(orgId)` (all providers) instead of SLACK-only.
+ *   - Fan-out: for each channel, resolve adapter via `registry.get(ch.provider)`;
+ *     skip silently if undefined (unknown provider).
  *
  * sdd/segmented-distribution (MVP-14):
- *   - Multi-channel fan-out: `findActiveChannels()` replaces `findUnique`.
- *   - `effectiveJurisdiction` = alert.jurisdiction ?? scanLog?.jurisdiction ?? null.
- *   - Channel filter: ch.jurisdictions.length === 0 (catch-all) OR includes effectiveJurisdiction.
+ *   - Multi-channel fan-out with effectiveJurisdiction filtering.
  *   - DISTRIBUTED gate (onAlertStatusChanged only): emits DISTRIBUTED status iff
  *     `results.some(r => r.status === 'fulfilled')`.
  *
@@ -20,7 +24,6 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { PrismaClient } from '@regwatch/db/client';
 import type {
-  NotificationPort,
   NotificationContext,
   AlertConcludedEvent,
   AlertStatusChangedEvent,
@@ -33,10 +36,11 @@ import {
 } from '@regwatch/types';
 import {
   NOTIFICATIONS_PRISMA_TOKEN,
-  NOTIFICATION_PORT_TOKEN,
+  NOTIFICATION_ADAPTER_REGISTRY_TOKEN,
   NOTIFICATIONS_REPO_TOKEN,
 } from './tokens.js';
 import type { NotificationsRepo } from './notifications.repository.js';
+import type { NotificationAdapterRegistry } from './notification-adapter.registry.js';
 import { env } from '../../env.js';
 
 // ─── Internal types ────────────────────────────────────────────────────────────
@@ -53,7 +57,7 @@ interface SharedCtx {
 
 type ActiveChannel = Pick<
   import('./notifications.repository.js').NotificationChannelRow,
-  'id' | 'webhookUrl' | 'channelName' | 'jurisdictions'
+  'id' | 'webhookUrl' | 'channelName' | 'provider' | 'jurisdictions'
 >;
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -64,7 +68,8 @@ export class NotificationsListenerService {
 
   constructor(
     @Inject(NOTIFICATIONS_PRISMA_TOKEN) private readonly prisma: PrismaClient,
-    @Inject(NOTIFICATION_PORT_TOKEN) private readonly port: NotificationPort,
+    @Inject(NOTIFICATION_ADAPTER_REGISTRY_TOKEN)
+    private readonly registry: NotificationAdapterRegistry,
     @Inject(NOTIFICATIONS_REPO_TOKEN) private readonly repo: NotificationsRepo,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
   ) {}
@@ -83,7 +88,11 @@ export class NotificationsListenerService {
       if (!shared || channels.length === 0) return;
 
       await Promise.allSettled(
-        channels.map((ch) => this.port.sendAlertConcluded(payload, this.buildCtx(shared, ch))),
+        channels.map((ch) => {
+          const adapter = this.registry.get(ch.provider);
+          if (!adapter) return Promise.resolve();
+          return adapter.sendAlertConcluded(payload, this.buildCtx(shared, ch));
+        }),
       );
     } catch (err) {
       this.logger.error({
@@ -114,7 +123,11 @@ export class NotificationsListenerService {
       if (channels.length === 0) return; // zero matched → DISTRIBUTED not emitted
 
       const results = await Promise.allSettled(
-        channels.map((ch) => this.port.sendAlertStatusChanged(payload, this.buildCtx(shared, ch))),
+        channels.map((ch) => {
+          const adapter = this.registry.get(ch.provider);
+          if (!adapter) return Promise.resolve();
+          return adapter.sendAlertStatusChanged(payload, this.buildCtx(shared, ch));
+        }),
       );
 
       // DISTRIBUTED gate: emit iff at least one channel call fulfilled.
@@ -146,7 +159,11 @@ export class NotificationsListenerService {
       if (!shared || channels.length === 0) return;
 
       await Promise.allSettled(
-        channels.map((ch) => this.port.sendAlertAssigned(payload, this.buildCtx(shared, ch))),
+        channels.map((ch) => {
+          const adapter = this.registry.get(ch.provider);
+          if (!adapter) return Promise.resolve();
+          return adapter.sendAlertAssigned(payload, this.buildCtx(shared, ch));
+        }),
       );
     } catch (err) {
       this.logger.error({
@@ -196,7 +213,7 @@ export class NotificationsListenerService {
         where: { id: organizationId },
         select: { name: true },
       }),
-      this.repo.findActiveChannels(organizationId, 'SLACK'),
+      this.repo.findAllActiveChannels(organizationId),
     ]);
 
     if (!alert || !org) return { shared: null, channels: [] };
@@ -241,7 +258,11 @@ export class NotificationsListenerService {
       orgName: shared.orgName,
       actorName: shared.actorName,
       assigneeName: shared.assigneeName,
+      // TODO: rename webhookUrl → deliveryTarget in a future migration
       webhookUrl: ch.webhookUrl,
+      // For EMAIL channels, ch.webhookUrl stores the recipient email address.
+      // recipientEmail makes the semantic explicit to adapters (design D2).
+      ...(ch.provider === 'EMAIL' && { recipientEmail: ch.webhookUrl }),
     };
   }
 

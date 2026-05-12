@@ -1,0 +1,28 @@
+# apps/web — Docker ignore
+# Prevents local artifacts and secrets from entering the build context.
+
+# Dependencies (installed fresh in each stage)
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+.next/
+out/
+*.tsbuildinfo
+
+# Environment files — secrets are injected via Secret Manager at runtime
+.env
+.env.*
+!.env.example
+
+# Test and dev artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Turbo cache
+.turbo/
+
+# Editor and OS artifacts
+.DS_Store
+*.log

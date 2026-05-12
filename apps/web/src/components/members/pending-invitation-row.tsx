@@ -15,7 +15,7 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+import { issueInvitationAction } from './actions';
 import { RevokeInvitationDialog } from './revoke-invitation-dialog';
 import type { InvitationRowData } from './pending-invitations-list';
 
@@ -42,6 +43,17 @@ export function PendingInvitationRow({
 }: PendingInvitationRowProps): React.ReactElement {
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleResend() {
+    setErrorMsg(null);
+    startTransition(async () => {
+      const result = await issueInvitationAction(orgId, invitation.email, invitation.role);
+      if (!result.ok) {
+        setErrorMsg(result.error ?? 'Failed to resend invitation');
+      }
+    });
+  }
 
   return (
     <tr data-testid={`pending-invitation-row-${invitation.id}`}>
@@ -80,6 +92,16 @@ export function PendingInvitationRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    handleResend();
+                  }}
+                  disabled={isPending}
+                  data-testid={`pending-invitation-resend-trigger-${invitation.id}`}
+                >
+                  Resend invitation
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={(event) => {

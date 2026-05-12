@@ -54,6 +54,31 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
        * sdd/email-inbound REQ-1.
        */
       EMAIL_INBOUND_WEBHOOK_SECRET: z.string().optional(),
+      /**
+       * Sentry Data Source Name. When absent, Sentry is disabled gracefully.
+       * sdd/observability (POST-6).
+       */
+      SENTRY_DSN: z.string().optional(),
+      /**
+       * Minimum log level emitted by nestjs-pino / pino-http.
+       * Accepts pino level strings: trace, debug, info, warn, error, fatal.
+       * Defaults to 'info' which suppresses debug noise in production.
+       * sdd/observability (POST-6).
+       */
+      LOG_LEVEL: z.string().default('info'),
+      /**
+       * Resend API key for outbound email. Optional at config level; the
+       * NotificationsModule validates its presence at runtime when the
+       * email adapter is active.
+       * sdd/notify-email-resend (POST-2).
+       */
+      RESEND_API_KEY: z.string().optional(),
+      /**
+       * Resend verified sender address (From: header). Optional at config level;
+       * validated by NotificationsModule at runtime.
+       * sdd/notify-email-resend (POST-2).
+       */
+      RESEND_FROM_EMAIL: z.string().email().optional(),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,

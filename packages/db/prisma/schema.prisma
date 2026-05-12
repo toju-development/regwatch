@@ -39,6 +39,13 @@ enum AlertSource {
   CMF_RESOLUCIONES
   /// MVP-15 — Email inbound via SendGrid Inbound Parse (sdd/email-inbound)
   EMAIL_INBOUND
+  /// POST-10 — Mexico (CNBV + BANXICO)
+  CNBV_CIRCULARES
+  CNBV_RESOLUCIONES
+  BANXICO_CIRCULARES
+  /// POST-10 — Uruguay (BCU)
+  BCU_CIRCULARES
+  BCU_COMUNICACIONES
 }
 
 // MVP-6 migration #9 (sdd/classifier-and-writer spec P1, B1.3):
@@ -445,6 +452,10 @@ model EnrichmentLog {
 // Append-only enum — future adapters (Teams, Email) add values here.
 enum NotificationProvider {
   SLACK
+  /// POST-1 — Microsoft Teams Incoming Webhook adapter (sdd/notify-teams)
+  TEAMS
+  /// POST-2 — Email via Resend (sdd/notify-email-resend)
+  EMAIL
 }
 
 // Multiple rows per (org, provider) are allowed — MVP-14 drops the unique

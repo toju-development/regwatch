@@ -30,13 +30,13 @@ import { useRouter } from 'next/navigation';
 import { useActiveOrg } from '@/lib/active-org-store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { SUPPORTED_JURISDICTIONS } from '@regwatch/types';
 import { ingestManual } from './actions';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const JURISDICTIONS = ['AR', 'BR', 'CO', 'PE', 'CL'] as const;
 type Tab = 'url' | 'pdf' | 'text';
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -316,7 +316,7 @@ export default function NewAlertPage(): React.ReactElement {
               <option value="" disabled>
                 Select jurisdiction…
               </option>
-              {JURISDICTIONS.map((j) => (
+              {SUPPORTED_JURISDICTIONS.map((j) => (
                 <option key={j} value={j}>
                   {j}
                 </option>

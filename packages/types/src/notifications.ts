@@ -28,8 +28,14 @@ export interface NotificationContext {
   actorName: string;
   /** null when the alert is unassigned. */
   assigneeName: string | null;
-  /** Slack Incoming Webhook URL resolved from `notification_channels` row. */
+  /** Incoming Webhook URL resolved from `notification_channels` row (provider-agnostic). */
   webhookUrl: string;
+  /**
+   * Recipient email address — set by the listener for EMAIL channels
+   * (populated from `ch.webhookUrl`). Undefined for SLACK/TEAMS channels.
+   * sdd/notify-email-resend (POST-2) design D2.
+   */
+  recipientEmail?: string;
 }
 
 /**

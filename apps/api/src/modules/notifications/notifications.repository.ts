@@ -112,6 +112,36 @@ export class NotificationsRepo {
     await this.prisma.notificationChannel.delete({ where: { id } });
   }
 
+  /**
+   * Returns all active channels for an org across ALL providers.
+   * Used by the listener for multi-provider fan-out (sdd/notify-teams POST-1).
+   * Includes `provider` field so the registry can dispatch to the correct adapter.
+   */
+  async findAllActiveChannels(
+    orgId: string,
+  ): Promise<
+    Pick<
+      NotificationChannelRow,
+      'id' | 'webhookUrl' | 'channelName' | 'provider' | 'jurisdictions'
+    >[]
+  > {
+    return this.prisma.notificationChannel.findMany({
+      where: { organizationId: orgId, isActive: true },
+      select: {
+        id: true,
+        webhookUrl: true,
+        channelName: true,
+        provider: true,
+        jurisdictions: true,
+      },
+    }) as Promise<
+      Pick<
+        NotificationChannelRow,
+        'id' | 'webhookUrl' | 'channelName' | 'provider' | 'jurisdictions'
+      >[]
+    >;
+  }
+
   async updateChannel(
     id: string,
     patch: Partial<{

@@ -43,7 +43,7 @@ import { Button } from '@/components/ui/button';
 
 import { updateSettingsAction, type UpdateSettingsResult } from './actions';
 
-const SCHEDULE_OPTIONS: ReadonlyArray<ScanSchedule> = ['daily', 'weekly', 'custom'];
+const SCHEDULE_OPTIONS: ReadonlyArray<ScanSchedule> = ['daily', 'weekly', 'custom', 'monthly'];
 const DAYS_OF_WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 type DayOfWeek = (typeof DAYS_OF_WEEK)[number];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -53,6 +53,7 @@ export interface PreferencesFormInitial {
   scanSchedule: ScanSchedule;
   scanDay: string;
   scanHour: number;
+  scanDayOfMonth?: number;
 }
 
 export interface PreferencesFormProps {
@@ -130,6 +131,7 @@ export function PreferencesForm({
   const [scanSchedule, setScanSchedule] = useState<ScanSchedule>(initial.scanSchedule);
   const [scanDay, setScanDay] = useState<string>(initial.scanDay);
   const [scanHour, setScanHour] = useState<number>(initial.scanHour);
+  const [scanDayOfMonth, setScanDayOfMonth] = useState<number>(initial.scanDayOfMonth ?? 1);
   const [pending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -156,6 +158,10 @@ export function PreferencesForm({
     if (next === 'weekly' && scanDay.includes(',')) {
       setScanDay('mon');
     }
+    // Reset scanDayOfMonth when leaving monthly.
+    if (next !== 'monthly') {
+      setScanDayOfMonth(1);
+    }
   }
 
   function toggleCustomDay(day: DayOfWeek): void {
@@ -175,6 +181,7 @@ export function PreferencesForm({
       scanSchedule,
       scanDay,
       scanHour,
+      ...(scanSchedule === 'monthly' ? { scanDayOfMonth } : {}),
     });
   }
 
@@ -335,6 +342,30 @@ export function PreferencesForm({
                 </label>
               ))}
             </div>
+          </div>
+        ) : null}
+
+        {scanSchedule === 'monthly' ? (
+          <div className="flex flex-col gap-1" data-testid="preferences-form-day-of-month-wrap">
+            <label htmlFor="preferences-form-day-of-month" className="text-sm font-medium">
+              Day of month (1–28)
+            </label>
+            <input
+              id="preferences-form-day-of-month"
+              type="number"
+              min={1}
+              max={28}
+              required
+              value={scanDayOfMonth}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                if (!Number.isNaN(parsed)) {
+                  setScanDayOfMonth(Math.min(28, Math.max(1, parsed)));
+                }
+              }}
+              className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm sm:max-w-xs"
+              data-testid="preferences-form-day-of-month"
+            />
           </div>
         ) : null}
 

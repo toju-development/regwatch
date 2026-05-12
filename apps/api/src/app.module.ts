@@ -1,5 +1,9 @@
 import { Module, type DynamicModule } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
+import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './common/auth/auth.module.js';
 import { PrismaModule } from './common/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
@@ -13,6 +17,7 @@ import { IngestModule } from './modules/ingest/ingest.module.js';
 import { AlertsModule } from './modules/alerts/alerts.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { EmailInboundModule } from './modules/email-inbound/email-inbound.module.js';
+import { DigestModule } from './modules/digest/digest.module.js';
 import { TestOnlyModule } from './common/auth/__test-only__/test-only.module.js';
 import { env } from './env.js';
 
@@ -31,7 +36,15 @@ import { env } from './env.js';
  */
 function conditionalImports(): NonNullable<DynamicModule['imports']> {
   const base: NonNullable<DynamicModule['imports']> = [
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: env.LOG_LEVEL,
+        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        ...(env.NODE_ENV !== 'production' && { transport: { target: 'pino-pretty' } }),
+      },
+    }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     HealthModule,
@@ -45,6 +58,7 @@ function conditionalImports(): NonNullable<DynamicModule['imports']> {
     AlertsModule,
     NotificationsModule,
     EmailInboundModule,
+    DigestModule,
   ];
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
     base.push(TestOnlyModule);
@@ -54,5 +68,6 @@ function conditionalImports(): NonNullable<DynamicModule['imports']> {
 
 @Module({
   imports: conditionalImports(),
+  providers: [{ provide: APP_FILTER, useClass: SentryGlobalFilter }],
 })
 export class AppModule {}
