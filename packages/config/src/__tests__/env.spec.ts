@@ -207,6 +207,77 @@ describe('createWebEnv', () => {
   });
 });
 
+// -------------------------------------------------------------------
+// Microsoft Entra ID — all-or-nothing schema guard (sdd/auth-ms-entra)
+// Spec: R-ENTRA-2 / INV-ENTRA-1.
+// Design: createWebEnv() post-parse guard; partial config MUST throw.
+// -------------------------------------------------------------------
+
+describe('createWebEnv — Microsoft Entra ID all-or-nothing guard', () => {
+  it('passes when NO Entra vars are set (feature off by default)', () => {
+    const env = createWebEnv({ ...validWebEnv() });
+    expect(env.AUTH_MICROSOFT_ENTRA_ID).toBeUndefined();
+    expect(env.AUTH_MICROSOFT_ENTRA_SECRET).toBeUndefined();
+    expect(env.AUTH_MICROSOFT_ENTRA_TENANT_ID).toBeUndefined();
+  });
+
+  it('passes when ALL THREE Entra vars are set', () => {
+    const env = createWebEnv({
+      ...validWebEnv(),
+      AUTH_MICROSOFT_ENTRA_ID: 'client-id-xxx',
+      AUTH_MICROSOFT_ENTRA_SECRET: 'client-secret-xxx',
+      AUTH_MICROSOFT_ENTRA_TENANT_ID: 'common',
+    });
+    expect(env.AUTH_MICROSOFT_ENTRA_ID).toBe('client-id-xxx');
+    expect(env.AUTH_MICROSOFT_ENTRA_SECRET).toBe('client-secret-xxx');
+    expect(env.AUTH_MICROSOFT_ENTRA_TENANT_ID).toBe('common');
+  });
+
+  it('throws when only ONE Entra var is set (partial config)', () => {
+    expect(() =>
+      createWebEnv({ ...validWebEnv(), AUTH_MICROSOFT_ENTRA_ID: 'client-id-xxx' }),
+    ).toThrow(/AUTH_MICROSOFT_ENTRA/);
+  });
+
+  it('throws when only TWO Entra vars are set (partial config)', () => {
+    expect(() =>
+      createWebEnv({
+        ...validWebEnv(),
+        AUTH_MICROSOFT_ENTRA_ID: 'client-id-xxx',
+        AUTH_MICROSOFT_ENTRA_SECRET: 'client-secret-xxx',
+      }),
+    ).toThrow(/AUTH_MICROSOFT_ENTRA/);
+  });
+
+  it('treats empty-string Entra vars as absent (emptyStringAsUndefined)', () => {
+    // t3-env strips empty strings before Zod sees them; our guard must
+    // likewise ignore empty-string values (same as unset).
+    const env = createWebEnv({
+      ...validWebEnv(),
+      AUTH_MICROSOFT_ENTRA_ID: '',
+      AUTH_MICROSOFT_ENTRA_SECRET: '',
+      AUTH_MICROSOFT_ENTRA_TENANT_ID: '',
+    });
+    expect(env.AUTH_MICROSOFT_ENTRA_ID).toBeUndefined();
+  });
+
+  it('AUTH_FAKE_ENTRA is accepted as optional string when set', () => {
+    const env = createWebEnv({
+      ...validWebEnv(),
+      AUTH_MICROSOFT_ENTRA_ID: 'client-id',
+      AUTH_MICROSOFT_ENTRA_SECRET: 'secret',
+      AUTH_MICROSOFT_ENTRA_TENANT_ID: 'common',
+      AUTH_FAKE_ENTRA: 'true',
+    });
+    expect(env.AUTH_FAKE_ENTRA).toBe('true');
+  });
+
+  it('AUTH_FAKE_ENTRA is undefined when not set', () => {
+    const env = createWebEnv({ ...validWebEnv() });
+    expect(env.AUTH_FAKE_ENTRA).toBeUndefined();
+  });
+});
+
 describe('parseInvitedEmails (helper)', () => {
   it('throws with the offending entry quoted in the message', () => {
     // Exercises the helper directly to pin the message contract that
