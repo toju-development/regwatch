@@ -127,6 +127,49 @@ echo -n "VALUE" | gcloud secrets create SECRET_NAME \
 
 ---
 
+## 3. Cloud Run Service Configuration
+
+Mount secrets as environment variables in each service. Example for `regwatch-api`:
+
+```bash
+gcloud run services update regwatch-api \
+  --region=$REGION \
+  --update-secrets=DATABASE_URL=DATABASE_URL:latest,\
+AUTH_SECRET=AUTH_SECRET:latest,\
+JWT_ISSUER=JWT_ISSUER:latest,\
+JWT_AUDIENCE=JWT_AUDIENCE:latest,\
+SCANNER_INTERNAL_SECRET=SCANNER_INTERNAL_SECRET:latest,\
+RESEND_API_KEY=RESEND_API_KEY:latest,\
+RESEND_FROM_EMAIL=RESEND_FROM_EMAIL:latest,\
+APP_URL=APP_URL:latest,\
+SCANNER_INTERNAL_URL=SCANNER_INTERNAL_URL:latest,\
+SENTRY_DSN=SENTRY_DSN:latest,\
+WEB_URL=WEB_URL:latest \
+  --add-cloudsql-instances=$PROJECT_ID:$REGION:regwatch-db
+```
+
+Repeat equivalently for `regwatch-scanner` and `regwatch-web` with their respective secret lists.
+
+### Service account permissions
+
+Each Cloud Run service needs:
+
+- `roles/cloudsql.client` — Cloud SQL connection
+- `roles/secretmanager.secretAccessor` — Secret Manager reads
+
+```bash
+for SVC in regwatch-api regwatch-scanner regwatch-web; do
+  SA="${SVC}-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+  gcloud iam service-accounts create ${SVC}-sa --display-name="$SVC runtime"
+  gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SA" --role=roles/cloudsql.client
+  gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+done
+```
+
+---
+
 ## 3a. Microsoft Entra ID Setup (Optional)
 
 Microsoft Entra ID (Azure AD) enables enterprise SSO for your users. The feature is **off by default** — the app starts normally with no Entra vars set.
@@ -172,45 +215,6 @@ AUTH_MICROSOFT_ENTRA_TENANT_ID=AUTH_MICROSOFT_ENTRA_TENANT_ID:latest
 ### Rollback
 
 Remove all three env vars from the Cloud Run service — the provider is absent when vars are unset, no code deploy needed.
-
-Mount secrets as environment variables in each service. Example for `regwatch-api`:
-
-```bash
-gcloud run services update regwatch-api \
-  --region=$REGION \
-  --update-secrets=DATABASE_URL=DATABASE_URL:latest,\
-AUTH_SECRET=AUTH_SECRET:latest,\
-JWT_ISSUER=JWT_ISSUER:latest,\
-JWT_AUDIENCE=JWT_AUDIENCE:latest,\
-SCANNER_INTERNAL_SECRET=SCANNER_INTERNAL_SECRET:latest,\
-RESEND_API_KEY=RESEND_API_KEY:latest,\
-RESEND_FROM_EMAIL=RESEND_FROM_EMAIL:latest,\
-APP_URL=APP_URL:latest,\
-SCANNER_INTERNAL_URL=SCANNER_INTERNAL_URL:latest,\
-SENTRY_DSN=SENTRY_DSN:latest,\
-WEB_URL=WEB_URL:latest \
-  --add-cloudsql-instances=$PROJECT_ID:$REGION:regwatch-db
-```
-
-Repeat equivalently for `regwatch-scanner` and `regwatch-web` with their respective secret lists.
-
-### Service account permissions
-
-Each Cloud Run service needs:
-
-- `roles/cloudsql.client` — Cloud SQL connection
-- `roles/secretmanager.secretAccessor` — Secret Manager reads
-
-```bash
-for SVC in regwatch-api regwatch-scanner regwatch-web; do
-  SA="${SVC}-sa@${PROJECT_ID}.iam.gserviceaccount.com"
-  gcloud iam service-accounts create ${SVC}-sa --display-name="$SVC runtime"
-  gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SA" --role=roles/cloudsql.client
-  gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
-done
-```
 
 ---
 
