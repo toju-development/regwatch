@@ -69,8 +69,8 @@ export type AlertSource = z.infer<typeof AlertSourceSchema>;
 
 /**
  * Jurisdictions supported by the scanner pipeline.
- * POST-10: MX + UY added. Imported by both apps/scanner and apps/web to
- * avoid hardcoded lists and cross-app coupling.
+ * Imported by both apps/scanner and apps/web to avoid hardcoded lists
+ * and cross-app coupling. Extend this list when adding new jurisdictions.
  */
 export const SUPPORTED_JURISDICTIONS = [
   'AR',
