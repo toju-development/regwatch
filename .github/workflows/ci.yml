@@ -155,6 +155,10 @@ jobs:
       # MVP-7: required by createApiEnv (InternalSecretGuard) — apps/api
       # WebServer won't start without it.
       SCANNER_INTERNAL_SECRET: ci-internal-secret
+      # POST-9: required by createApiEnv — placeholder values for CI
+      STRIPE_SECRET_KEY: sk_test_ci_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+      STRIPE_PRO_PRICE_ID: price_ci_placeholder
 
     steps:
       - name: Checkout
