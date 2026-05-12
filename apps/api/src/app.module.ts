@@ -40,7 +40,7 @@ function conditionalImports(): NonNullable<DynamicModule['imports']> {
       pinoHttp: {
         level: env.LOG_LEVEL,
         redact: ['req.headers.authorization', 'req.headers.cookie'],
-        transport: env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
+        ...(env.NODE_ENV !== 'production' && { transport: { target: 'pino-pretty' } }),
       },
     }),
     EventEmitterModule.forRoot(),
