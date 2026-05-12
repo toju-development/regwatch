@@ -357,7 +357,12 @@ export function PreferencesForm({
               max={28}
               required
               value={scanDayOfMonth}
-              onChange={(e) => setScanDayOfMonth(Number.parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                if (!Number.isNaN(parsed)) {
+                  setScanDayOfMonth(Math.min(28, Math.max(1, parsed)));
+                }
+              }}
               className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm sm:max-w-xs"
               data-testid="preferences-form-day-of-month"
             />

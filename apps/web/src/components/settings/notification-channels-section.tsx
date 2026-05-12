@@ -162,6 +162,11 @@ function AddChannelForm({ orgId, onAdded }: AddChannelFormProps): React.ReactEle
   function validate(): string | null {
     if (isWebhookProvider) {
       if (!webhookUrl.trim()) return 'Webhook URL is required.';
+      try {
+        new URL(webhookUrl.trim());
+      } catch {
+        return 'Webhook URL must be a valid URL (e.g. https://hooks.slack.com/…).';
+      }
     } else {
       if (!email.trim()) return 'Email address is required.';
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Invalid email address.';
@@ -181,8 +186,9 @@ function AddChannelForm({ orgId, onAdded }: AddChannelFormProps): React.ReactEle
     try {
       const body = {
         provider,
-        webhookUrl: isWebhookProvider ? webhookUrl.trim() : undefined,
-        channelName: !isWebhookProvider ? email.trim() : undefined,
+        // For EMAIL channels the API expects the recipient address in webhookUrl
+        // (validated as email). For webhook providers (SLACK/TEAMS) it holds the URL.
+        webhookUrl: isWebhookProvider ? webhookUrl.trim() : email.trim(),
         jurisdictions: Array.from(selectedJurisdictions),
       };
       const res = await fetch('/api/notifications/channels', {
@@ -213,6 +219,7 @@ function AddChannelForm({ orgId, onAdded }: AddChannelFormProps): React.ReactEle
 
   return (
     <form
+      noValidate
       onSubmit={(e) => void handleSubmit(e)}
       className="flex flex-col gap-3 rounded-md border p-4"
       data-testid="add-channel-form"
@@ -261,7 +268,7 @@ function AddChannelForm({ orgId, onAdded }: AddChannelFormProps): React.ReactEle
           </label>
           <input
             id="add-channel-email"
-            type="text"
+            type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="alerts@example.com"
