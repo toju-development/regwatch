@@ -21,3 +21,7 @@ process.env.MANUAL_INGEST_ENABLED = process.env.MANUAL_INGEST_ENABLED ?? 'true';
 // sdd/notify-email-resend (POST-2): use memory transport in all tests so
 // RESEND_API_KEY / RESEND_FROM_EMAIL are not required by createApiEnv().
 process.env.EMAIL_TRANSPORT = process.env.EMAIL_TRANSPORT ?? 'memory';
+// sdd/billing-stripe POST-9 — required by createApiEnv
+process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? 'sk_test_placeholder';
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? 'whsec_test_placeholder';
+process.env.STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID ?? 'price_test_placeholder';

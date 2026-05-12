@@ -22,6 +22,7 @@ import { PRISMA_CLIENT } from '../../common/prisma/prisma.token.js';
 import { IngestController } from './ingest.controller.js';
 import { IngestService } from './ingest.service.js';
 import { INGEST_ENV_TOKEN, INGEST_PRISMA_TOKEN } from './tokens.js';
+import { PlanGuard } from '../../common/guards/plan.guard.js';
 import { env } from '../../env.js';
 
 @Module({
@@ -36,6 +37,7 @@ import { env } from '../../env.js';
       useValue: env,
     },
     IngestService,
+    PlanGuard,
   ],
 })
 export class IngestModule {}

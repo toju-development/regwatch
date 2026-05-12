@@ -42,3 +42,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://test:test@l
 process.env.AUTH_SECRET =
   process.env.AUTH_SECRET ?? 'test-auth-secret-must-be-at-least-32-chars-ok';
 process.env.SCANNER_INTERNAL_SECRET = process.env.SCANNER_INTERNAL_SECRET ?? 'test-internal-secret';
+// sdd/billing-stripe POST-9 — required by createApiEnv
+process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? 'sk_test_placeholder';
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? 'whsec_test_placeholder';
+process.env.STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID ?? 'price_test_placeholder';

@@ -79,6 +79,23 @@ export function createApiEnv(runtimeEnv: Record<string, string | undefined> = pr
        * sdd/notify-email-resend (POST-2).
        */
       RESEND_FROM_EMAIL: z.string().email().optional(),
+      /**
+       * Stripe secret key (server-side only). Used by BillingService to
+       * create Checkout sessions and validate webhooks.
+       * sdd/billing-stripe (POST-9).
+       */
+      STRIPE_SECRET_KEY: z.string().min(1),
+      /**
+       * Stripe webhook signing secret. Used by BillingController to verify
+       * that incoming webhook payloads originate from Stripe.
+       * sdd/billing-stripe (POST-9).
+       */
+      STRIPE_WEBHOOK_SECRET: z.string().min(1),
+      /**
+       * Stripe Price ID for the Pro plan. Used when creating Checkout sessions.
+       * sdd/billing-stripe (POST-9).
+       */
+      STRIPE_PRO_PRICE_ID: z.string().min(1),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,

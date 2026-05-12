@@ -30,6 +30,7 @@ import {
   Post,
   ServiceUnavailableException,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -39,6 +40,7 @@ import { ingestManualSchema, pdfMetaSchema } from './dto/ingest-manual.dto.js';
 import { IngestService, DuplicateAlertError, SsrfBlockedError } from './ingest.service.js';
 import { PdfExtractionError, MAX_PDF_BYTES } from './utils/pdf-extractor.js';
 import { INGEST_ENV_TOKEN } from './tokens.js';
+import { PlanGuard } from '../../common/guards/plan.guard.js';
 import type { ApiEnv } from '@regwatch/config';
 
 interface MulterFile {
@@ -65,6 +67,7 @@ export class IngestController {
    */
   @Post('manual')
   @Roles('OWNER', 'ADMIN', 'ANALYST')
+  @UseGuards(PlanGuard)
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_PDF_BYTES } }))
   async ingestManual(

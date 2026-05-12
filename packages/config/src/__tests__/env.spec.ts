@@ -11,6 +11,10 @@ const baseEnv = {
   DATABASE_URL: VALID_DB,
   AUTH_SECRET: VALID_SECRET,
   SCANNER_INTERNAL_SECRET: 'test-internal-secret',
+  // sdd/billing-stripe POST-9 — required by createApiEnv
+  STRIPE_SECRET_KEY: 'sk_test_placeholder',
+  STRIPE_WEBHOOK_SECRET: 'whsec_test_placeholder',
+  STRIPE_PRO_PRICE_ID: 'price_test_placeholder',
 };
 
 /**
@@ -29,6 +33,10 @@ const baseEnv = {
 const validWebEnv = () => ({
   ...baseEnv,
   API_URL: 'http://localhost:4000',
+  // sdd/billing-stripe POST-9 — optional in createWebEnv; included here for
+  // completeness but omitting them should also parse successfully.
+  STRIPE_PRO_PRICE_ID: 'price_test_placeholder',
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_placeholder',
 });
 
 describe('createCoreEnv', () => {

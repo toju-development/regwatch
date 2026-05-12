@@ -133,6 +133,7 @@ model Organization {
   scanLogs       ScanLog[]
   enrichmentLogs EnrichmentLog[]
   notificationChannels NotificationChannel[]
+  subscription   Subscription?
 }
 
 model User {
@@ -533,4 +534,24 @@ model AlertEvent {
 
   @@index([alertId, createdAt])
   @@index([organizationId, createdAt])
+}
+
+// ─── Billing domain (sdd/billing-stripe — POST-9, migration #16) ──────────────
+
+/// One subscription per org. Upserted by BillingService on Stripe webhook events.
+/// Missing row = Free plan (additive default — INV-BILLING-1).
+model Subscription {
+  id                   String   @id @default(cuid())
+  organizationId       String   @unique
+  stripeCustomerId     String   @unique
+  stripeSubscriptionId String   @unique
+  stripePriceId        String
+  /// Mirrors Stripe subscription status: active | canceled | past_due | trialing | unpaid
+  status               String
+  currentPeriodEnd     DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }

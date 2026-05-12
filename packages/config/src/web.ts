@@ -125,6 +125,14 @@ export function createWebEnv(runtimeEnv: Record<string, string | undefined> = pr
       // By convention, production deployments do not set this var (same
       // pattern as AUTH_FAKE_GOOGLE).
       AUTH_FAKE_ENTRA: z.string().optional(),
+      // ---- Stripe billing (sdd/billing-stripe POST-9) ----
+      // Optional: only required when billing is enabled. The web layer
+      // redirects to the Stripe-hosted Checkout URL built by the API —
+      // these vars are not strictly needed at runtime unless the web app
+      // builds the session itself.
+      STRIPE_PRO_PRICE_ID: z.string().min(1).optional(),
+      // Stripe publishable key — safe to expose to the browser.
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
     },
     runtimeEnv,
     emptyStringAsUndefined: true,
