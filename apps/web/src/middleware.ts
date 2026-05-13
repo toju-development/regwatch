@@ -101,5 +101,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/((?!api/auth|api/health|api/test|_next/static|_next/image|favicon.ico|login).*)'],
+  matcher: [
+    '/((?!api/auth|api/health|api/test|_next/static|_next/image|favicon.ico|login|verify-request).*)',
+  ],
 };

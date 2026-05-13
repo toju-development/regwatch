@@ -31,6 +31,8 @@ export const authConfig: NextAuthConfig = {
   ],
   pages: {
     signIn: '/login',
+    error: '/login',
+    verifyRequest: '/verify-request',
   },
   // Real callbacks live in auth.ts (Node). authorized() lives here so the
   // future edge middleware can use it.

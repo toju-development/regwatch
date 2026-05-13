@@ -78,6 +78,7 @@ import { apiServerFetch } from '@/lib/api-server';
 import { ActiveOrgProvider } from '@/components/org-switcher/active-org-provider';
 import { OrgSwitcher } from '@/components/org-switcher/org-switcher';
 import { NavLinks } from '@/components/dashboard/nav-links';
+import { LogoutButton } from '@/components/auth/logout-button';
 
 export default async function DashboardLayout({
   children,
@@ -124,7 +125,10 @@ export default async function DashboardLayout({
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
               <div className="font-semibold">RegWatch</div>
               <NavLinks />
-              <OrgSwitcher />
+              <div className="flex items-center gap-2">
+                <OrgSwitcher />
+                <LogoutButton />
+              </div>
             </div>
           </header>
           <main className="flex-1">{children}</main>
