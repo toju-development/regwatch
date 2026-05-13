@@ -77,7 +77,7 @@ export function LogoutButton(): React.ReactElement {
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="default"
               disabled={pending}
               onClick={handleConfirm}
               data-testid="logout-dialog-confirm"
