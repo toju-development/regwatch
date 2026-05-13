@@ -39,12 +39,12 @@ async function magicLinkSignInAction(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '');
   if (!email) return;
 
-  // Block if user already registered via OAuth (has Account rows)
+  // Block if user already registered via OAuth (has a non-email Account row)
   const existingUser = await prisma.user.findUnique({
     where: { email },
-    include: { accounts: { select: { provider: true }, take: 1 } },
+    include: { accounts: { select: { provider: true } } },
   });
-  if (existingUser && existingUser.accounts.length > 0) {
+  if (existingUser?.accounts.some((a) => a.provider !== 'email')) {
     redirect('/login?error=ProviderMismatch');
   }
 

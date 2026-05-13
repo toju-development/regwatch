@@ -176,19 +176,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (email && account?.provider) {
         const existingUser = await prisma.user.findUnique({
           where: { email },
-          include: { accounts: { select: { provider: true }, take: 1 } },
+          include: { accounts: { select: { provider: true } } },
         });
 
         const isOAuth = account.type === 'oauth' || account.type === 'oidc';
 
         if (existingUser) {
-          const registeredViaEmail = existingUser.accounts.length === 0;
-          const registeredViaOAuth = existingUser.accounts.length > 0;
+          const hasEmailAccount = existingUser.accounts.some((a) => a.provider === 'email');
+          const hasOAuthAccount = existingUser.accounts.some((a) => a.provider !== 'email');
 
           // OAuth attempting to log in but user registered via magic link
-          if (isOAuth && registeredViaEmail) return false;
+          if (isOAuth && hasEmailAccount && !hasOAuthAccount) return false;
           // Magic link attempting to log in but user registered via OAuth
-          if (!isOAuth && registeredViaOAuth) return false;
+          if (!isOAuth && hasOAuthAccount && !hasEmailAccount) return false;
         } else if (isOAuth) {
           // New user signing in via OAuth — clean up any stale VerificationToken
           // left from an unconfirmed magic link request for the same email.
