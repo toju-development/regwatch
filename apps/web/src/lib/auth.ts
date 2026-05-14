@@ -30,6 +30,7 @@ import { env } from '@/env';
 import { authConfig } from '@/lib/auth.config';
 import { buildProviders } from '@/lib/auth-config';
 import { memoryEmailProvider } from '@/lib/auth-email/memory-transport';
+import { resendEmailProvider } from '@/lib/auth-email/resend-transport';
 import { fetchMemberships, fetchMembershipsVersion } from '@/lib/auth-memberships';
 import { createPersonalOrgForUser } from '@/lib/auto-org';
 import { clearActiveOrgOnSignOut } from '@/lib/auth-signout';
@@ -63,10 +64,7 @@ function resolveEmailProvider(): ReturnType<typeof memoryEmailProvider> {
         'Set both, or use EMAIL_TRANSPORT=memory in dev/CI.',
     );
   }
-  throw new Error(
-    'EMAIL_TRANSPORT=resend selected but Resend provider not yet implemented ' +
-      '(deferred to MVP-3b deploy slice). Use EMAIL_TRANSPORT=memory in dev/CI.',
-  );
+  return resendEmailProvider(env.AUTH_RESEND_KEY, env.AUTH_EMAIL_FROM);
 }
 
 const JWT_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30d (Auth.js default)
@@ -76,6 +74,14 @@ const AUDIENCE_DEFAULT = 'regwatch-api';
 function secretToString(secret: string | string[]): string {
   return Array.isArray(secret) ? secret[0]! : secret;
 }
+
+/**
+ * Latch: emails that need an Account row created for the "email" provider.
+ * Set in `signIn` callback (before User exists), consumed in `createUser` event
+ * (after User is inserted by the adapter). In-memory is safe — both callbacks
+ * run in the same Node.js process within the same request lifecycle.
+ */
+const pendingEmailAccountEmails = new Set<string>();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -128,6 +134,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: user.email ?? '',
         name: user.name ?? null,
       });
+
+      // Provider lock: if this user registered via magic link, create an
+      // Account row with provider="email" so future OAuth attempts are blocked.
+      // The email was flagged in the signIn callback (before User existed).
+      const email = user.email ?? '';
+      if (email && pendingEmailAccountEmails.has(email)) {
+        pendingEmailAccountEmails.delete(email);
+        await prisma.account.create({
+          data: {
+            userId: user.id,
+            type: 'email',
+            provider: 'email',
+            providerAccountId: email,
+          },
+        });
+      }
     },
     // R-ActiveOrgCookie scenario "Sign-out clears cookie": the active-org
     // cookie must die in the same response as the NextAuth session cookie.
@@ -144,8 +166,44 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
      * `/login?error=AccessDenied`. Logic lives in `auth-registration-gate.ts`
      * for unit testability — see that module's docstring for the allow chain.
      */
-    async signIn({ user, profile }) {
+    async signIn({ user, account, profile }) {
       const email = user?.email ?? (profile?.email as string | undefined) ?? null;
+
+      // Provider lock: enforce single sign-in method per email.
+      // Magic link never creates an Account row via the adapter — we create
+      // one manually on first sign-in so the lock can be enforced uniformly:
+      // presence of an Account row = the provider the user registered with.
+      if (email && account?.provider) {
+        const existingUser = await prisma.user.findUnique({
+          where: { email },
+          include: { accounts: { select: { provider: true } } },
+        });
+
+        const isOAuth = account.type === 'oauth' || account.type === 'oidc';
+
+        if (existingUser) {
+          const hasEmailAccount = existingUser.accounts.some((a) => a.provider === 'email');
+          const hasOAuthAccount = existingUser.accounts.some((a) => a.provider !== 'email');
+
+          // OAuth attempting to log in but user registered via magic link
+          if (isOAuth && hasEmailAccount && !hasOAuthAccount) return false;
+          // Magic link attempting to log in but user registered via OAuth
+          if (!isOAuth && hasOAuthAccount && !hasEmailAccount) return false;
+        } else if (isOAuth) {
+          // New user signing in via OAuth — clean up any stale VerificationToken
+          // left from an unconfirmed magic link request for the same email.
+          await prisma.verificationToken.deleteMany({ where: { identifier: email } });
+        } else if (!isOAuth) {
+          // New user signing in via magic link for the first time.
+          // PrismaAdapter does NOT create an Account row for email providers —
+          // we create it here so the provider lock works on subsequent attempts.
+          // We defer this upsert: the User row is created by the adapter AFTER
+          // signIn returns true, so we hook into the createUser event instead.
+          // Flag the need via a module-level latch read in createUser.
+          pendingEmailAccountEmails.add(email);
+        }
+      }
+
       return isSignInAllowed(email, {
         env: {
           REGISTRATION_ENABLED: env.REGISTRATION_ENABLED,

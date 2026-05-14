@@ -5,27 +5,25 @@
  *   S "Provider error returns to /login").
  * Design §2 file-layout row.
  *
- * RSC shell with two Server Action forms:
- *   1. Google button → `signIn('google')`. When `AUTH_FAKE_GOOGLE=1` the
- *      fake-google credentials provider is mounted in `auth.ts` — operators
- *      use that instead of the real Google flow in dev/CI.
- *   2. Magic Link form → `signIn('resend', { email })`. The `'resend'`
- *      provider id is overridden in dev/CI by the in-memory transport
- *      (see `auth-email/memory-transport.ts`); the UI is invariant.
+ * RSC shell con dos Server Action forms:
+ *   1. Google button → `signIn('google')`.
+ *   2. Magic Link form → `signIn('resend', { email })`.
+ *
+ * NO `pnpm build` después de cambios (regla del proyecto).
  */
 import { signIn } from '@/lib/auth';
 import { env } from '@/env';
 import { Button } from '@/components/ui/button';
+import { prisma } from '@regwatch/db';
+import { redirect } from 'next/navigation';
+import { LoginCard } from '@/components/auth/login-buttons';
 
 interface LoginPageProps {
-  // Next.js 15: searchParams is a Promise.
   searchParams: Promise<{ error?: string; callbackUrl?: string }>;
 }
 
 async function googleSignInAction(): Promise<void> {
   'use server';
-  // When AUTH_FAKE_GOOGLE=1 the fake provider intercepts; otherwise this hits
-  // real Google (which fails without secrets — expected per operator decision).
   await signIn('google', { redirectTo: '/' });
 }
 
@@ -40,7 +38,29 @@ async function magicLinkSignInAction(formData: FormData): Promise<void> {
   'use server';
   const email = String(formData.get('email') ?? '');
   if (!email) return;
+
+  // Block if user already registered via OAuth (has a non-email Account row)
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    include: { accounts: { select: { provider: true } } },
+  });
+  if (existingUser?.accounts.some((a) => a.provider !== 'email')) {
+    redirect('/login?error=ProviderMismatch');
+  }
+
   await signIn('resend', { email, redirectTo: '/' });
+}
+
+function errorMessage(error: string): string {
+  if (error === 'AccessDenied')
+    return 'Tu cuenta no tiene acceso a RegWatch. Contactá al administrador.';
+  if (error === 'ProviderMismatch')
+    return 'Ya tenés una cuenta con ese email usando Google. Ingresá con Google.';
+  if (error === 'OAuthAccountNotLinked')
+    return 'Ya tenés una cuenta con ese email pero usando otro método. Usá el mismo método con el que te registraste.';
+  if (error === 'OAuthSignin' || error === 'OAuthCallback')
+    return 'Error al conectar con Google. Intentá de nuevo.';
+  return 'Error al iniciar sesión. Intentá de nuevo.';
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -48,67 +68,94 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const fakeGoogleEnabled = env.AUTH_FAKE_GOOGLE;
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-8 p-8">
-      <header className="space-y-2 text-center">
-        <h1 className="text-2xl font-semibold">Sign in to RegWatch</h1>
-        <p className="text-muted-foreground text-sm">
-          Choose Google or receive a magic link by email.
+    <main className="bg-background flex min-h-screen items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-8">
+        {/* Logo + nombre en línea */}
+        <div className="flex items-center justify-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">RegWatch</h1>
+          <svg
+            width="56"
+            height="56"
+            viewBox="0 0 44 44"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden
+          >
+            {/* Ojo: dos arcos simétricos */}
+            <path
+              d="M3 22 C 9 11, 35 11, 41 22"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <path
+              d="M3 22 C 9 33, 35 33, 41 22"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              fill="none"
+            />
+            {/* Iris */}
+            <circle cx="22" cy="22" r="6" stroke="currentColor" strokeWidth="2.25" fill="none" />
+            {/* Pupila */}
+            <circle cx="22" cy="22" r="2.25" fill="currentColor" />
+            {/* Línea de medición / pulso atravesando — asimétrico, tipo ECG real */}
+            <path
+              d="M0 22 L11 22 L13 20 L15 24 L17 22 L19 12 L21 30 L23 22 L26 22 L28 19 L30 22 L44 22"
+              stroke="#10b981"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </svg>
+        </div>
+        <p className="text-muted-foreground -mt-9 text-center text-sm">
+          Monitoreo regulatorio inteligente
         </p>
-      </header>
 
-      {error ? (
-        <p
-          role="alert"
-          data-testid="login-error"
-          className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
-        >
-          Sign-in failed: {error}
+        {/* Error */}
+        {error ? (
+          <p
+            role="alert"
+            data-testid="login-error"
+            className="text-center text-sm text-red-600 dark:text-red-400"
+          >
+            {errorMessage(error)}
+          </p>
+        ) : null}
+
+        {/* Card de login */}
+        <LoginCard googleAction={googleSignInAction} magicLinkAction={magicLinkSignInAction} />
+
+        {/* Dev: fake google — solo visible en dev */}
+        {fakeGoogleEnabled ? (
+          <div className="border-border rounded-lg border border-dashed p-4">
+            <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider">
+              Dev — fake Google
+            </p>
+            <form action={fakeGoogleSignInAction} className="flex gap-2">
+              <input
+                id="fakeEmail"
+                name="fakeEmail"
+                type="email"
+                required
+                placeholder="dev@regwatch.local"
+                data-testid="fake-google-email"
+                className="border-input bg-background focus-visible:ring-ring h-9 flex-1 rounded-md border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1"
+              />
+              <Button type="submit" variant="ghost" size="sm" data-testid="fake-google-signin">
+                Entrar
+              </Button>
+            </form>
+          </div>
+        ) : null}
+
+        <p className="text-muted-foreground text-center text-xs">
+          Al continuar aceptás los términos de uso y la política de privacidad.
         </p>
-      ) : null}
-
-      <form action={googleSignInAction} className="flex flex-col gap-2">
-        <Button type="submit" variant="outline" data-testid="google-signin">
-          Sign in with Google
-        </Button>
-      </form>
-
-      {fakeGoogleEnabled ? (
-        <form action={fakeGoogleSignInAction} className="flex flex-col gap-2">
-          <label htmlFor="fakeEmail" className="text-muted-foreground text-xs">
-            Dev: fake-google sign-in
-          </label>
-          <input
-            id="fakeEmail"
-            name="fakeEmail"
-            type="email"
-            required
-            placeholder="dev@regwatch.local"
-            data-testid="fake-google-email"
-            className="border-input bg-background focus-visible:ring-ring h-9 rounded-md border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1"
-          />
-          <Button type="submit" variant="ghost" data-testid="fake-google-signin">
-            Sign in (fake Google)
-          </Button>
-        </form>
-      ) : null}
-
-      <form action={magicLinkSignInAction} className="flex flex-col gap-2">
-        <label htmlFor="email" className="text-muted-foreground text-xs">
-          Magic link
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          placeholder="you@example.com"
-          data-testid="magic-link-email"
-          className="border-input bg-background focus-visible:ring-ring h-9 rounded-md border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1"
-        />
-        <Button type="submit" data-testid="magic-link-submit">
-          Email me a link
-        </Button>
-      </form>
+      </div>
     </main>
   );
 }

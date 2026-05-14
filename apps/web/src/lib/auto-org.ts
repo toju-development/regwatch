@@ -18,7 +18,7 @@
  * 5 collisions ridiculously unlikely.
  */
 import { randomBytes } from 'node:crypto';
-import { Prisma, type PrismaClient } from '@regwatch/db';
+import { type PrismaClient } from '@regwatch/db';
 
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -88,15 +88,21 @@ export interface AutoOrgUser {
 
 export type PrismaLike = Pick<PrismaClient, 'membership' | 'organization' | '$transaction'>;
 
+function isPrismaP2002(err: unknown, fields: string[]): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as Record<string, unknown>;
+  // Support both instanceof and duck-typed (avoids cross-bundle instanceof failures).
+  if (e['code'] !== 'P2002') return false;
+  const target = (e['meta'] as Record<string, unknown> | undefined)?.['target'];
+  if (Array.isArray(target)) return fields.some((f) => (target as string[]).includes(f));
+  if (typeof target === 'string') return fields.includes(target);
+  // Fallback: check error message string for the constraint name.
+  const msg = typeof e['message'] === 'string' ? e['message'] : '';
+  return fields.some((f) => msg.includes(f));
+}
+
 function isOrgSlugUniqueViolation(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
-  if (err.code !== 'P2002') return false;
-  // `meta.target` may be string | string[] depending on driver.
-  const target = err.meta?.target;
-  if (Array.isArray(target)) {
-    return target.includes('slug') || target.includes(ORG_SLUG_UNIQUE_CONSTRAINT);
-  }
-  return target === ORG_SLUG_UNIQUE_CONSTRAINT || target === 'slug';
+  return isPrismaP2002(err, ['slug', ORG_SLUG_UNIQUE_CONSTRAINT]);
 }
 
 /**
@@ -110,15 +116,7 @@ function isOrgSlugUniqueViolation(err: unknown): boolean {
  * Invariant" → S "Concurrent first sign-in produces exactly one org".
  */
 function isPersonalOrgIdUniqueViolation(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
-  if (err.code !== 'P2002') return false;
-  const target = err.meta?.target;
-  if (Array.isArray(target)) {
-    return (
-      target.includes('personalOrgId') || target.includes(USER_PERSONAL_ORG_ID_UNIQUE_CONSTRAINT)
-    );
-  }
-  return target === USER_PERSONAL_ORG_ID_UNIQUE_CONSTRAINT || target === 'personalOrgId';
+  return isPrismaP2002(err, ['personalOrgId', USER_PERSONAL_ORG_ID_UNIQUE_CONSTRAINT]);
 }
 
 /**
