@@ -26,7 +26,11 @@ export function StepSlack({
     if (!hasValue) return true;
     try {
       const u = new URL(value);
-      return u.protocol === 'https:' && u.hostname === 'hooks.slack.com';
+      return (
+        u.protocol === 'https:' &&
+        u.hostname === 'hooks.slack.com' &&
+        u.pathname.startsWith('/services/')
+      );
     } catch {
       return false;
     }

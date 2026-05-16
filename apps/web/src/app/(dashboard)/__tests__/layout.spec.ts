@@ -55,7 +55,7 @@ vi.mock('@/components/org-switcher/org-switcher', () => ({ OrgSwitcher: () => nu
 vi.mock('@/components/dashboard/nav-links', () => ({ NavLinks: () => null }));
 vi.mock('@/components/auth/logout-button', () => ({ LogoutButton: () => null }));
 vi.mock('@/components/onboarding/onboarding-modal', () => ({
-  OnboardingModal: () => null,
+  OnboardingModal: vi.fn(() => null),
 }));
 
 import DashboardLayout from '../layout.js';
@@ -136,6 +136,13 @@ describe('DashboardLayout — onboarding guard', () => {
     const result = await DashboardLayout({ children: null });
     expect(result).toBeDefined();
     expect(redirect).not.toHaveBeenCalledWith('/onboarding');
+
+    // Verifica que el árbol JSX incluye OnboardingModal con las props correctas.
+    // En un RSC (node env) React no invoca la función del componente — inspeccionamos
+    // el elemento React devuelto directamente.
+    const tree = JSON.stringify(result);
+    expect(tree).toContain('"orgId":"org-1"');
+    expect(tree).toContain('"initialOrgName":"Mi Org"');
   });
 
   it('does NOT redirect OWNER when onboardingCompletedAt is set', async () => {

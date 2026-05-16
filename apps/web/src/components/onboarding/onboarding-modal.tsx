@@ -77,7 +77,11 @@ export function OnboardingModal({
     if (step === 2 && slackWebhook.trim()) {
       try {
         const u = new URL(slackWebhook);
-        return u.protocol === 'https:' && u.hostname === 'hooks.slack.com';
+        return (
+          u.protocol === 'https:' &&
+          u.hostname === 'hooks.slack.com' &&
+          u.pathname.startsWith('/services/')
+        );
       } catch {
         return false;
       }

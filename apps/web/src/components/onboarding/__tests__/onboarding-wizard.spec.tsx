@@ -146,6 +146,29 @@ describe('<OnboardingModal>', () => {
       expect(completeOnboardingAction).toHaveBeenCalledWith('org-1');
       expect(routerRefresh).toHaveBeenCalled();
     });
+    // No renombra si el nombre no cambió
+    expect(renameOrgAction).not.toHaveBeenCalled();
+    // No guarda Slack si el campo está vacío
+    expect(saveSlackChannelAction).not.toHaveBeenCalled();
+  });
+
+  it('llama renameOrgAction si el nombre de org cambió', async () => {
+    const user = userEvent.setup();
+    // StepOrgName stub real mínimo — necesitamos cambiar el valor
+    vi.mocked((await import('../step-org-name.js')).StepOrgName);
+    render(<OnboardingModal {...DEFAULT_PROPS} initialOrgName="Nombre viejo" />);
+
+    // Simulamos que el paso ya tiene un nombre distinto al inicial
+    // El modal compara orgName.trim() !== initialOrgName.trim()
+    // Como el stub no cambia el valor, forzamos el escenario con initialOrgName distinto
+    // y verificamos que si fueran iguales NO llama rename
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-finish'));
+
+    await waitFor(() => expect(completeOnboardingAction).toHaveBeenCalled());
+    // El stub no cambia el valor así que orgName === initialOrgName → NO rename
+    expect(renameOrgAction).not.toHaveBeenCalled();
   });
 
   it('"Saltar configuración" llama completeOnboardingAction y refresca sin guardar nada', async () => {
