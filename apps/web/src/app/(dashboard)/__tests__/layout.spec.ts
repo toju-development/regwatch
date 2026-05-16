@@ -1,12 +1,12 @@
 /**
  * @vitest-environment node
  *
- * Unit tests for the onboarding redirect guard in `(dashboard)/layout.tsx`.
+ * Unit tests para el guard de onboarding en `(dashboard)/layout.tsx`.
  *
- * Spec: `sdd/onboarding-flow/spec` — "OWNER with incomplete onboarding is redirected":
- *   - OWNER + onboardingCompletedAt === null → redirect('/onboarding')
- *   - OWNER + onboardingCompletedAt set → no redirect; renders normally
- *   - Non-OWNER (ANALYST / ADMIN) → no redirect; apiServerFetch NOT called
+ * Nuevo comportamiento (post-redesign):
+ *   - OWNER + onboardingCompletedAt === null → renderiza <OnboardingModal> (NO redirige)
+ *   - OWNER + onboardingCompletedAt set → no modal; renderiza normalmente
+ *   - Non-OWNER (ANALYST / ADMIN) → no modal; apiServerFetch NOT called
  *
  * Strategy: call the async RSC function directly (no jsdom). Mock all I/O
  * boundaries. `redirect` is mocked to throw so assertions use `.rejects`.
@@ -53,6 +53,10 @@ vi.mock('@/components/org-switcher/active-org-provider', () => ({
 }));
 vi.mock('@/components/org-switcher/org-switcher', () => ({ OrgSwitcher: () => null }));
 vi.mock('@/components/dashboard/nav-links', () => ({ NavLinks: () => null }));
+vi.mock('@/components/auth/logout-button', () => ({ LogoutButton: () => null }));
+vi.mock('@/components/onboarding/onboarding-modal', () => ({
+  OnboardingModal: vi.fn(() => null),
+}));
 
 import DashboardLayout from '../layout.js';
 
@@ -71,7 +75,36 @@ function makeMembership(role: MembershipClaim['role']): MembershipClaim {
 function settingsJson(onboardingCompletedAt: string | null) {
   return {
     ok: true,
-    json: () => Promise.resolve({ settings: { onboardingCompletedAt } }),
+    json: () =>
+      Promise.resolve({
+        settings: {
+          onboardingCompletedAt,
+          jurisdictions: [],
+          scanSchedule: 'weekly',
+          scanDay: 'mon',
+          scanHour: 8,
+        },
+      }),
+  };
+}
+
+function channelsJson() {
+  return {
+    ok: true,
+    json: () => Promise.resolve([]),
+  };
+}
+
+function orgMeJson(orgName = 'Mi Org') {
+  return {
+    ok: true,
+    json: () =>
+      Promise.resolve({
+        memberships: [
+          { orgId: 'org-1', orgName, orgSlug: 'my-org', role: 'OWNER', isPersonal: false },
+        ],
+        activeOrgId: 'org-1',
+      }),
   };
 }
 
@@ -91,13 +124,25 @@ beforeEach(() => {
   resolveActiveOrg.mockResolvedValue({ activeOrgId: 'org-1' });
 });
 
-describe('DashboardLayout — onboarding redirect guard', () => {
-  it('redirects OWNER to /onboarding when onboardingCompletedAt is null', async () => {
+describe('DashboardLayout — onboarding guard', () => {
+  it('NO redirige al OWNER cuando onboardingCompletedAt es null — monta el modal', async () => {
     auth.mockResolvedValue(makeSession([makeMembership('OWNER')]));
-    apiServerFetch.mockResolvedValue(settingsJson(null));
+    // apiServerFetch se llama 3 veces: settings, channels, org/me
+    apiServerFetch
+      .mockResolvedValueOnce(settingsJson(null))
+      .mockResolvedValueOnce(channelsJson())
+      .mockResolvedValueOnce(orgMeJson());
 
-    await expect(DashboardLayout({ children: null })).rejects.toThrow('REDIRECT:/onboarding');
-    expect(redirect).toHaveBeenCalledWith('/onboarding');
+    const result = await DashboardLayout({ children: null });
+    expect(result).toBeDefined();
+    expect(redirect).not.toHaveBeenCalledWith('/onboarding');
+
+    // Verifica que el árbol JSX incluye OnboardingModal con las props correctas.
+    // En un RSC (node env) React no invoca la función del componente — inspeccionamos
+    // el elemento React devuelto directamente.
+    const tree = JSON.stringify(result);
+    expect(tree).toContain('"orgId":"org-1"');
+    expect(tree).toContain('"initialOrgName":"Mi Org"');
   });
 
   it('does NOT redirect OWNER when onboardingCompletedAt is set', async () => {
@@ -108,21 +153,19 @@ describe('DashboardLayout — onboarding redirect guard', () => {
     expect(redirect).not.toHaveBeenCalledWith('/onboarding');
   });
 
-  it('does NOT redirect ANALYST even when org has null onboardingCompletedAt', async () => {
+  it('does NOT call apiServerFetch for ANALYST (no onboarding check)', async () => {
     auth.mockResolvedValue(makeSession([makeMembership('ANALYST')]));
 
     await expect(DashboardLayout({ children: null })).resolves.toBeDefined();
-    // Non-OWNER: the guard must skip the settings fetch entirely.
     expect(apiServerFetch).not.toHaveBeenCalled();
     expect(redirect).not.toHaveBeenCalledWith('/onboarding');
   });
 
-  it('does NOT redirect ADMIN even when org has null onboardingCompletedAt', async () => {
+  it('does NOT call apiServerFetch for ADMIN', async () => {
     auth.mockResolvedValue(makeSession([makeMembership('ADMIN')]));
 
     await expect(DashboardLayout({ children: null })).resolves.toBeDefined();
     expect(apiServerFetch).not.toHaveBeenCalled();
-    expect(redirect).not.toHaveBeenCalledWith('/onboarding');
   });
 
   it('redirects to /login when session is missing', async () => {

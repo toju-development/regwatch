@@ -46,6 +46,7 @@ function makeRepo(): OrgRepo {
     findOrganizationsByIds: vi.fn(),
     getUserPersonalOrgId: vi.fn(),
     createOrgWithMembership: vi.fn(),
+    updateName: vi.fn(),
   };
 }
 
@@ -227,5 +228,27 @@ describe('OrganizationsService.create', () => {
     await service.create('user-1', 'Acme');
 
     expect(vi.mocked(repo.createOrgWithMembership).mock.calls[0]?.[0].name).toBe('Acme');
+  });
+});
+
+describe('OrganizationsService.rename', () => {
+  let repo: OrgRepo;
+
+  beforeEach(() => {
+    repo = makeRepo();
+  });
+
+  it('delegates to repo.updateName and returns the result (R-RenameOrg S success)', async () => {
+    vi.mocked(repo.updateName).mockResolvedValue({ id: 'org-1', name: 'Nueva Org' });
+    const service = new OrganizationsService(repo);
+    const result = await service.rename('org-1', 'Nueva Org');
+    expect(vi.mocked(repo.updateName)).toHaveBeenCalledWith('org-1', 'Nueva Org');
+    expect(result).toEqual({ id: 'org-1', name: 'Nueva Org' });
+  });
+
+  it('propagates errors from repo.updateName', async () => {
+    vi.mocked(repo.updateName).mockRejectedValue(new Error('DB error'));
+    const service = new OrganizationsService(repo);
+    await expect(service.rename('org-1', 'fail')).rejects.toThrow('DB error');
   });
 });

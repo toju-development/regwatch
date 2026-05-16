@@ -1,51 +1,71 @@
 /**
- * `<StepSlack>` — onboarding wizard Step 2.
+ * `<StepSlack>` — Paso 3 del wizard de onboarding.
  *
- * Wraps `<NotificationChannelForm>` with "Next" and "Skip" wizard controls.
- * Both advance to the next step — the Slack setup is optional.
- *
- * Spec: `sdd/onboarding-flow/spec` — "Step 2 — skip without saving".
- * Design: `sdd/onboarding-flow/design` — step-slack.tsx (Create).
+ * Componente controlled. Sin botones — la navegación la maneja el wizard.
+ * Configurar Slack es opcional.
  *
  * NO `pnpm build` after changes (project rule).
  */
 'use client';
 
-import { Button } from '@/components/ui/button';
-import {
-  NotificationChannelForm,
-  type NotificationChannelInitial,
-} from '@/components/settings/notification-channel-form';
-
 export interface StepSlackProps {
-  orgId: string;
-  initialChannel: NotificationChannelInitial | null;
-  onNext: () => void;
+  value: string;
+  onChange: (webhookUrl: string) => void;
+  disabled?: boolean;
 }
 
-export function StepSlack({ orgId, initialChannel, onNext }: StepSlackProps): React.ReactElement {
+const SLACK_WEBHOOK_PREFIX = 'https://hooks.slack.com/services/';
+
+export function StepSlack({
+  value,
+  onChange,
+  disabled = false,
+}: StepSlackProps): React.ReactElement {
+  const hasValue = value.trim().length > 0;
+  const isValid = (() => {
+    if (!hasValue) return true;
+    try {
+      const u = new URL(value);
+      return (
+        u.protocol === 'https:' &&
+        u.hostname === 'hooks.slack.com' &&
+        u.pathname.startsWith('/services/')
+      );
+    } catch {
+      return false;
+    }
+  })();
+
   return (
-    <div className="flex flex-col gap-6" data-testid="step-slack">
-      <div>
-        <h2 className="text-lg font-semibold">Step 2: Slack Notifications</h2>
-        <p className="text-muted-foreground text-sm">
-          Connect a Slack channel to receive regulatory alerts. You can skip this and set it up
-          later in settings.
+    <div className="flex flex-col gap-4" data-testid="step-slack">
+      <p className="text-muted-foreground text-sm">
+        Conectá un canal de Slack para recibir alertas regulatorias en tiempo real. Es opcional —
+        podés configurarlo más tarde desde Ajustes.
+      </p>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="slack-webhook" className="text-sm font-medium">
+          URL del webhook de Slack
+          <span className="text-muted-foreground ml-1 text-xs font-normal">(opcional)</span>
+        </label>
+        <input
+          id="slack-webhook"
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={`${SLACK_WEBHOOK_PREFIX}T00000000/B00000000/XXXXXXXX`}
+          disabled={disabled}
+          className="border-input bg-background focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
+          data-testid="step-slack-webhook-input"
+        />
+        {hasValue && !isValid ? (
+          <p role="alert" className="text-destructive text-xs" data-testid="step-slack-url-error">
+            La URL debe ser un webhook válido de Slack (https://hooks.slack.com/…)
+          </p>
+        ) : null}
+        <p className="text-muted-foreground text-xs">
+          Para obtener el webhook, andá a tu workspace de Slack → Apps → Incoming Webhooks.
         </p>
-      </div>
-      <NotificationChannelForm orgId={orgId} initialChannel={initialChannel} />
-      <div className="flex items-center gap-3">
-        <Button onClick={onNext} data-testid="step-slack-next">
-          Next
-        </Button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="text-muted-foreground hover:text-foreground text-sm"
-          data-testid="step-slack-skip"
-        >
-          Skip
-        </button>
       </div>
     </div>
   );

@@ -145,4 +145,17 @@ export class OrganizationsService {
       `Failed to allocate a unique slug after ${SLUG_RETRY_MAX} attempts.`,
     );
   }
+
+  /**
+   * Rename an existing organization.
+   *
+   * Auth enforcement (OWNER role + OrgScope) is the caller's
+   * responsibility (controller guard chain). This method trusts that
+   * the orgId has already been verified against the JWT.
+   *
+   * Spec: `sdd/onboarding-redesign/spec` R-RenameOrg.
+   */
+  async rename(orgId: string, name: string): Promise<{ id: string; name: string }> {
+    return this.repo.updateName(orgId, name);
+  }
 }
