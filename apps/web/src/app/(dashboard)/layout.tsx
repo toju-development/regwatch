@@ -70,7 +70,7 @@
  */
 import { redirect } from 'next/navigation';
 import { SessionProvider } from 'next-auth/react';
-import type { MembershipClaim } from '@regwatch/types';
+import type { MembershipClaim, SettingsJurisdictions } from '@regwatch/types';
 
 import { auth } from '@/lib/auth';
 import { resolveActiveOrg } from '@/lib/active-org-resolve';
@@ -79,6 +79,39 @@ import { ActiveOrgProvider } from '@/components/org-switcher/active-org-provider
 import { OrgSwitcher } from '@/components/org-switcher/org-switcher';
 import { NavLinks } from '@/components/dashboard/nav-links';
 import { LogoutButton } from '@/components/auth/logout-button';
+import { OnboardingModal } from '@/components/onboarding/onboarding-modal';
+
+/** Wire shape from `GET /org/:orgId/settings`. */
+interface SettingsWire {
+  settings: {
+    jurisdictions: SettingsJurisdictions;
+    scanSchedule: string;
+    scanDay: string;
+    scanHour: number;
+    onboardingCompletedAt: string | null;
+  };
+}
+
+/** Wire shape from `GET /org/me`. */
+interface OrgMeWire {
+  memberships: Array<{
+    orgId: string;
+    orgName: string;
+    orgSlug: string;
+    role: string;
+    isPersonal: boolean;
+  }>;
+  activeOrgId: string | null;
+}
+
+/** Wire shape from `GET /notifications/channels`. */
+interface NotificationChannelWire {
+  id: string;
+  provider: string;
+  webhookUrl: string;
+  channelName: string | null;
+  isActive: boolean;
+}
 
 export default async function DashboardLayout({
   children,
@@ -90,29 +123,55 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
-  // The `session` callback in `auth.ts` augments `session.user` with a
-  // `memberships: MembershipClaim[]` field (see auth.ts:160). Cast at the
-  // boundary because NextAuth's default `User` type doesn't know about it.
   const memberships = ((session.user as unknown as { memberships?: MembershipClaim[] })
     .memberships ?? []) as ReadonlyArray<MembershipClaim>;
 
   const { activeOrgId } = await resolveActiveOrg(memberships);
 
-  // Onboarding redirect guard (MVP-11):
-  // OWNER with null onboardingCompletedAt → redirect to /onboarding.
-  // Non-OWNER roles are never redirected (ADMIN/ANALYST/VIEWER bypass).
+  // Verificar si el OWNER necesita completar el onboarding.
+  let onboardingModal: React.ReactElement | null = null;
   const activeMembership = memberships.find((m) => m.organizationId === activeOrgId);
   if (activeMembership?.role === 'OWNER' && activeOrgId) {
-    const settingsRes = await apiServerFetch(`/org/${activeOrgId}/settings`, {
-      method: 'GET',
-      orgId: activeOrgId,
-    });
+    const [settingsRes, channelsRes, orgMeRes] = await Promise.all([
+      apiServerFetch(`/org/${activeOrgId}/settings`, { method: 'GET', orgId: activeOrgId }),
+      apiServerFetch('/notifications/channels', { method: 'GET', orgId: activeOrgId }),
+      apiServerFetch('/org/me', { method: 'GET', orgId: activeOrgId }),
+    ]);
+
     if (settingsRes.ok) {
-      const body = (await settingsRes.json()) as {
-        settings: { onboardingCompletedAt: string | null };
-      };
-      if (body.settings.onboardingCompletedAt === null) {
-        redirect('/onboarding');
+      const { settings } = (await settingsRes.json()) as SettingsWire;
+
+      if (settings.onboardingCompletedAt === null) {
+        // Resolver nombre de la org.
+        let initialOrgName = activeOrgId;
+        if (orgMeRes.ok) {
+          const orgMe = (await orgMeRes.json()) as OrgMeWire;
+          const match = orgMe.memberships.find((m) => m.orgId === activeOrgId);
+          if (match) initialOrgName = match.orgName;
+        }
+
+        // Resolver canal de Slack existente.
+        const channels: NotificationChannelWire[] = channelsRes.ok
+          ? ((await channelsRes.json()) as NotificationChannelWire[])
+          : [];
+        const slackChannel = channels.find((c) => c.provider === 'SLACK') ?? null;
+
+        onboardingModal = (
+          <OnboardingModal
+            orgId={activeOrgId}
+            initialOrgName={initialOrgName}
+            initialJurisdictions={settings.jurisdictions.map((j) => ({
+              code: j.code,
+              enabled: j.enabled,
+              customTopics: j.customTopics ?? '',
+            }))}
+            initialChannel={
+              slackChannel
+                ? { webhookUrl: slackChannel.webhookUrl, channelName: slackChannel.channelName }
+                : null
+            }
+          />
+        );
       }
     }
   }
@@ -133,6 +192,7 @@ export default async function DashboardLayout({
           </header>
           <main className="flex-1">{children}</main>
         </div>
+        {onboardingModal}
       </ActiveOrgProvider>
     </SessionProvider>
   );

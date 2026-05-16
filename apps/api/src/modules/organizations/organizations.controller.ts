@@ -1,20 +1,26 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Header,
   Headers,
   HttpCode,
   HttpStatus,
   Inject,
+  Param,
+  Patch,
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { AuthUser } from '@regwatch/types';
 import { CurrentUser } from '../../common/auth/current-user.decorator.js';
+import { CurrentOrg } from '../../common/auth/decorators/current-org.decorator.js';
 import { PublicScope } from '../../common/auth/decorators/public-scope.decorator.js';
+import { Roles } from '../../common/auth/decorators/roles.decorator.js';
 import { ZodBodyPipe } from '../../common/pipes/zod-body.pipe.js';
 import { createOrgSchema, type CreateOrgDto } from './dto/create-org.dto.js';
+import { updateOrgSchema, type UpdateOrgDto } from './dto/update-org.dto.js';
 import type { MeResponseDto } from './dto/me-response.dto.js';
 import { OrganizationsService } from './organizations.service.js';
 
@@ -62,5 +68,39 @@ export class OrganizationsController {
       throw new UnauthorizedException('JWT required.');
     }
     return this.service.create(user.userId, body.name);
+  }
+
+  /**
+   * `PATCH /org/:orgId` — rename an existing organization.
+   *
+   * Locked to OWNER. The `OrgScopeGuard` (global) resolves `X-Org-Id`
+   * against the JWT memberships; `@CurrentOrg()` exposes the resolved id.
+   * `assertOrgScope` ensures the URL `:orgId` matches the header-resolved
+   * org (defense-in-depth, identical pattern to `SettingsController`).
+   *
+   * Spec: `sdd/onboarding-redesign/spec` R-RenameOrg.
+   * Design: `sdd/onboarding-redesign/design` — PATCH /org/:orgId.
+   */
+  @Patch(':orgId')
+  @Roles('OWNER')
+  @Header('Cache-Control', 'no-store')
+  async rename(
+    @Param('orgId') orgId: string,
+    @CurrentOrg() currentOrgId: string,
+    @Body(new ZodBodyPipe(updateOrgSchema)) body: UpdateOrgDto,
+  ): Promise<{ id: string; name: string }> {
+    this.assertOrgScope(orgId, currentOrgId);
+    return this.service.rename(orgId, body.name);
+  }
+
+  /**
+   * Defense-in-depth: 403 when the URL `:orgId` segment doesn't match
+   * the org resolved by `OrgScopeGuard` from `X-Org-Id`. Mirrors
+   * `SettingsController.assertOrgScope`.
+   */
+  private assertOrgScope(orgIdParam: string, currentOrgId: string): void {
+    if (currentOrgId !== orgIdParam) {
+      throw new ForbiddenException('Path :orgId does not match resolved org scope');
+    }
   }
 }

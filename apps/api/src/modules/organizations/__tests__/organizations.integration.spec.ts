@@ -417,4 +417,107 @@ describe.skipIf(!dbAvailable)('OrganizationsController (HTTP integration)', () =
       expect(res.status).toBe(401);
     });
   });
+
+  // -------------------------------------------------------------------- //
+  // R-RenameOrg (sdd/onboarding-redesign)                                //
+  // -------------------------------------------------------------------- //
+
+  describe('PATCH /org/:orgId', () => {
+    it('R-RenameOrg S1 — OWNER renames org → 200 with updated name', async () => {
+      const seed = await seedUserWithOrgs(1, { personalIndex: 0 });
+      const org = seed.orgs[0]!;
+      const jwt = await mintJwt({
+        userId: seed.userId,
+        email: seed.email,
+        memberships: membershipsClaim(seed),
+      });
+
+      const res = await fetch(`${baseUrl}/org/${org.id}`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          'content-type': 'application/json',
+          'x-org-id': org.id,
+        },
+        body: JSON.stringify({ name: 'Acme Renombrado' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id: string; name: string };
+      expect(body.name).toBe('Acme Renombrado');
+      expect(body.id).toBe(org.id);
+    });
+
+    it('R-RenameOrg S2 — blank name (trims to empty) → 400', async () => {
+      const seed = await seedUserWithOrgs(1, { personalIndex: 0 });
+      const org = seed.orgs[0]!;
+      const jwt = await mintJwt({
+        userId: seed.userId,
+        email: seed.email,
+        memberships: membershipsClaim(seed),
+      });
+
+      const res = await fetch(`${baseUrl}/org/${org.id}`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          'content-type': 'application/json',
+          'x-org-id': org.id,
+        },
+        body: JSON.stringify({ name: '   ' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('R-RenameOrg S3 — name > 80 chars → 400', async () => {
+      const seed = await seedUserWithOrgs(1, { personalIndex: 0 });
+      const org = seed.orgs[0]!;
+      const jwt = await mintJwt({
+        userId: seed.userId,
+        email: seed.email,
+        memberships: membershipsClaim(seed),
+      });
+
+      const res = await fetch(`${baseUrl}/org/${org.id}`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          'content-type': 'application/json',
+          'x-org-id': org.id,
+        },
+        body: JSON.stringify({ name: 'x'.repeat(81) }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('R-RenameOrg S4 — non-OWNER (ADMIN) → 403', async () => {
+      const seed = await seedUserWithOrgs(2, { personalIndex: null });
+      // orgs[0] role=OWNER, orgs[1] role=ADMIN — sign as member of orgs[1] only
+      const adminOrg = seed.orgs[1]!;
+      const jwt = await mintJwt({
+        userId: seed.userId,
+        email: seed.email,
+        memberships: [{ organizationId: adminOrg.id, orgSlug: adminOrg.slug, role: 'ADMIN' }],
+      });
+
+      const res = await fetch(`${baseUrl}/org/${adminOrg.id}`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          'content-type': 'application/json',
+          'x-org-id': adminOrg.id,
+        },
+        body: JSON.stringify({ name: 'Intento Admin' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('R-RenameOrg S5 — no Authorization → 401', async () => {
+      const res = await fetch(`${baseUrl}/org/some-org-id`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Sin Auth' }),
+      });
+      expect(res.status).toBe(401);
+    });
+  });
 });

@@ -1,152 +1,163 @@
 /**
- * Unit tests for `<OnboardingWizard>`.
+ * Unit tests para `<OnboardingModal>`.
  *
- * Spec: `sdd/onboarding-flow/spec` — "Three-step client stepper":
- *   - Renders Step 1 initially with correct indicator
- *   - Advances to step 2 when StepJurisdictions calls onNext
- *   - Advances to step 3 when StepSlack calls onNext
- *   - Calls completeOnboardingAction(orgId) and router.push('/dashboard') on finish
- *
- * Mocks:
- *   - `../actions.js` → completeOnboardingAction
- *   - `next/navigation` → useRouter
- *   - Step sub-components — simple stubs that expose only the onNext/onFinish callbacks,
- *     avoiding the deep dependency tree (PreferencesForm, InviteMemberForm, etc.)
+ * Los steps son stubs mínimos — exponen solo un marcador visible.
+ * La navegación (Siguiente, Volver, Finalizar) y el guardado los centraliza el modal.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const completeOnboardingAction = vi.fn();
-const routerPush = vi.fn();
+const renameOrgAction = vi.fn();
+const saveSettingsAction = vi.fn();
+const saveSlackChannelAction = vi.fn();
 
 vi.mock('../actions.js', () => ({
   completeOnboardingAction: (...a: unknown[]) => completeOnboardingAction(...a),
+  renameOrgAction: (...a: unknown[]) => renameOrgAction(...a),
+  saveSettingsAction: (...a: unknown[]) => saveSettingsAction(...a),
+  saveSlackChannelAction: (...a: unknown[]) => saveSlackChannelAction(...a),
 }));
 
+const routerRefresh = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: routerPush }),
+  useRouter: () => ({ refresh: routerRefresh }),
 }));
 
-// Minimal stubs — expose only the callback the wizard wires up.
+// Stubs mínimos — solo renderizan un marcador visible.
+vi.mock('../step-org-name.js', () => ({
+  StepOrgName: () => <div data-testid="mock-step-org-name" />,
+}));
+
 vi.mock('../step-jurisdictions.js', () => ({
-  StepJurisdictions: ({ onNext }: { onNext: () => void }) => (
-    <button data-testid="mock-step-jurisdictions-next" onClick={onNext}>
-      jurisdictions-next
-    </button>
-  ),
+  StepJurisdictions: () => <div data-testid="mock-step-jurisdictions" />,
 }));
 
 vi.mock('../step-slack.js', () => ({
-  StepSlack: ({ onNext }: { onNext: () => void }) => (
-    <button data-testid="mock-step-slack-next" onClick={onNext}>
-      slack-next
-    </button>
-  ),
+  StepSlack: () => <div data-testid="mock-step-slack" />,
 }));
 
-vi.mock('../step-invitations.js', () => ({
-  StepInvitations: ({ onFinish }: { onFinish: () => void }) => (
-    <button data-testid="mock-step-invitations-finish" onClick={onFinish}>
-      invitations-finish
-    </button>
-  ),
-}));
+import { OnboardingModal } from '../onboarding-modal.js';
 
-import { OnboardingWizard } from '../onboarding-wizard.js';
-
-const INITIAL_SETTINGS = {
-  jurisdictions: [],
-  scanSchedule: 'weekly' as const,
-  scanDay: 'mon',
-  scanHour: 8,
+const DEFAULT_PROPS = {
+  orgId: 'org-1',
+  initialOrgName: 'Mi Org',
+  initialJurisdictions: [],
+  initialChannel: null,
 };
 
 beforeEach(() => {
   completeOnboardingAction.mockReset();
-  routerPush.mockReset();
+  renameOrgAction.mockReset();
+  saveSettingsAction.mockReset();
+  saveSlackChannelAction.mockReset();
+  routerRefresh.mockReset();
+
   completeOnboardingAction.mockResolvedValue({ ok: true });
+  renameOrgAction.mockResolvedValue({ ok: true });
+  saveSettingsAction.mockResolvedValue({ ok: true });
+  saveSlackChannelAction.mockResolvedValue({ ok: true });
 });
 
 afterEach(() => {
-  // cleanup() is called globally via vitest-setup
+  // cleanup() global via vitest-setup
 });
 
-describe('<OnboardingWizard>', () => {
-  it('renders step 1 (Jurisdictions) initially with step indicator "Step 1 / 3"', () => {
-    render(
-      <OnboardingWizard orgId="org-1" initialSettings={INITIAL_SETTINGS} initialChannel={null} />,
-    );
+describe('<OnboardingModal>', () => {
+  it('renderiza el Paso 1 (OrgName) inicialmente', () => {
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
 
-    expect(screen.getByTestId('onboarding-wizard-step-indicator')).toHaveTextContent('Step 1 / 3');
-    expect(screen.getByTestId('mock-step-jurisdictions-next')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-step-slack-next')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('mock-step-invitations-finish')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-step-org-name')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-step-jurisdictions')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mock-step-slack')).not.toBeInTheDocument();
   });
 
-  it('shows 3 step dots, first active', () => {
-    render(
-      <OnboardingWizard orgId="org-1" initialSettings={INITIAL_SETTINGS} initialChannel={null} />,
-    );
-
-    expect(screen.getByTestId('onboarding-wizard-dot-0')).toBeInTheDocument();
-    expect(screen.getByTestId('onboarding-wizard-dot-1')).toBeInTheDocument();
-    expect(screen.getByTestId('onboarding-wizard-dot-2')).toBeInTheDocument();
+  it('muestra el botón "Saltar configuración"', () => {
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
+    expect(screen.getByTestId('onboarding-modal-skip-all')).toBeInTheDocument();
   });
 
-  it('advances to step 2 when StepJurisdictions calls onNext', async () => {
+  it('muestra 3 dots de pasos', () => {
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
+    expect(screen.getByTestId('onboarding-modal-dot-0')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-modal-dot-1')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-modal-dot-2')).toBeInTheDocument();
+  });
+
+  it('no muestra "Volver" en el paso 1', () => {
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
+    expect(screen.queryByTestId('onboarding-modal-back')).not.toBeInTheDocument();
+  });
+
+  it('avanza al Paso 2 al hacer click en Siguiente', async () => {
     const user = userEvent.setup();
-    render(
-      <OnboardingWizard orgId="org-1" initialSettings={INITIAL_SETTINGS} initialChannel={null} />,
-    );
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
 
-    await user.click(screen.getByTestId('mock-step-jurisdictions-next'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
 
-    expect(screen.getByTestId('onboarding-wizard-step-indicator')).toHaveTextContent('Step 2 / 3');
-    expect(screen.getByTestId('mock-step-slack-next')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-step-jurisdictions-next')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-step-jurisdictions')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-step-org-name')).not.toBeInTheDocument();
   });
 
-  it('advances to step 3 when StepSlack calls onNext', async () => {
+  it('muestra "Volver" en el paso 2 y retrocede al paso 1', async () => {
     const user = userEvent.setup();
-    render(
-      <OnboardingWizard orgId="org-1" initialSettings={INITIAL_SETTINGS} initialChannel={null} />,
-    );
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
 
-    await user.click(screen.getByTestId('mock-step-jurisdictions-next'));
-    await user.click(screen.getByTestId('mock-step-slack-next'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    expect(screen.getByTestId('onboarding-modal-back')).toBeInTheDocument();
 
-    expect(screen.getByTestId('onboarding-wizard-step-indicator')).toHaveTextContent('Step 3 / 3');
-    expect(screen.getByTestId('mock-step-invitations-finish')).toBeInTheDocument();
+    await user.click(screen.getByTestId('onboarding-modal-back'));
+    expect(screen.getByTestId('mock-step-org-name')).toBeInTheDocument();
   });
 
-  it('calls completeOnboardingAction(orgId) and router.push("/dashboard") on finish', async () => {
+  it('avanza al Paso 3 desde Paso 2', async () => {
     const user = userEvent.setup();
-    render(
-      <OnboardingWizard orgId="org-1" initialSettings={INITIAL_SETTINGS} initialChannel={null} />,
-    );
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
 
-    await user.click(screen.getByTestId('mock-step-jurisdictions-next'));
-    await user.click(screen.getByTestId('mock-step-slack-next'));
-    await user.click(screen.getByTestId('mock-step-invitations-finish'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+
+    expect(screen.getByTestId('mock-step-slack')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-modal-finish')).toBeInTheDocument();
+  });
+
+  it('retrocede del Paso 3 al Paso 2', async () => {
+    const user = userEvent.setup();
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
+
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-back'));
+
+    expect(screen.getByTestId('mock-step-jurisdictions')).toBeInTheDocument();
+  });
+
+  it('llama saveSettingsAction y completeOnboardingAction al finalizar', async () => {
+    const user = userEvent.setup();
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
+
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-next'));
+    await user.click(screen.getByTestId('onboarding-modal-finish'));
 
     await waitFor(() => {
+      expect(saveSettingsAction).toHaveBeenCalledWith('org-1', expect.any(Object));
       expect(completeOnboardingAction).toHaveBeenCalledWith('org-1');
-      expect(routerPush).toHaveBeenCalledWith('/dashboard');
+      expect(routerRefresh).toHaveBeenCalled();
     });
   });
 
-  it('does NOT advance beyond step 3 (step is capped)', async () => {
+  it('"Saltar configuración" llama completeOnboardingAction y refresca sin guardar nada', async () => {
     const user = userEvent.setup();
-    // Advance through all 3 steps.
-    render(
-      <OnboardingWizard orgId="org-1" initialSettings={INITIAL_SETTINGS} initialChannel={null} />,
-    );
+    render(<OnboardingModal {...DEFAULT_PROPS} />);
 
-    await user.click(screen.getByTestId('mock-step-jurisdictions-next'));
-    await user.click(screen.getByTestId('mock-step-slack-next'));
+    await user.click(screen.getByTestId('onboarding-modal-skip-all'));
 
-    // Still on step 3 indicator.
-    expect(screen.getByTestId('onboarding-wizard-step-indicator')).toHaveTextContent('Step 3 / 3');
+    await waitFor(() => {
+      expect(completeOnboardingAction).toHaveBeenCalledWith('org-1');
+      expect(saveSettingsAction).not.toHaveBeenCalled();
+      expect(routerRefresh).toHaveBeenCalled();
+    });
   });
 });

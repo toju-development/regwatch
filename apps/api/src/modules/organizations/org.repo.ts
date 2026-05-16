@@ -33,6 +33,14 @@ export interface OrgRepo {
     org: { id: string; name: string; slug: string };
     membership: { id: string; userId: string; organizationId: string; role: Role };
   }>;
+
+  /**
+   * Updates the display name of an existing organization.
+   *
+   * Spec: `sdd/onboarding-redesign/spec` R-RenameOrg.
+   * Design: `sdd/onboarding-redesign/design` — OrgRepo.updateName.
+   */
+  updateName(orgId: string, name: string): Promise<{ id: string; name: string }>;
 }
 
 /** Injection token for `OrgRepo` — explicit per foot-gun #628. */
@@ -88,5 +96,13 @@ export class PrismaOrgRepo implements OrgRepo {
       return [created, memb] as const;
     });
     return { org, membership: { ...membership, role: membership.role as Role } };
+  }
+
+  async updateName(orgId: string, name: string): Promise<{ id: string; name: string }> {
+    return this.prisma.organization.update({
+      where: { id: orgId },
+      data: { name },
+      select: { id: true, name: true },
+    });
   }
 }
